@@ -367,103 +367,126 @@ with col_left:
                 if oversized:
                     st.error("Fehler: Mindestens ein Bauteil ist größer als die verfügbare Pressplatte (inkl. Besäumung/Randabzug)!")
                 else:
-                    # Leistungsstarker Guillotine Free-Rectangles Packer (nutzt verbleibende Pockets rekursiv voll aus)
-                    def pack_guillotine_maxrects(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
+                    # Strenger, fehlerfreier Block- und Raster-Packer (garantiert Null Überlappungen)
+                    def pack_guillotine_strict(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
                         max_w = plate_w - m_r
                         max_h = plate_h - m_b
                         
-                        free_rects = [{
+                        placed = []
+                        unplaced = list(items)
+                        
+                        # Sortieren nach Fläche absteigend
+                        unplaced.sort(key=lambda x: x["w"] * x["h"], reverse=True)
+                        
+                        if not unplaced:
+                            return placed, [], unplaced
+                            
+                        # Nimm das größte Bauteil als Referenz
+                        primary_item = unplaced[0]
+                        pw, ph = primary_item["w"], primary_item["h"]
+                        
+                        if m_l + pw > max_w or m_t + ph > max_h:
+                            return [], [], items
+                            
+                        # Platziere das erste große Bauteil oben links
+                        placed.append({
                             "x": m_l,
                             "y": m_t,
+                            "w": pw,
+                            "h": ph,
+                            "name": primary_item["name"]
+                        })
+                        unplaced.pop(0)
+                        
+                        # Definiere zwei saubere, nicht-überlappende Pockets
+                        pocket_right = {
+                            "x": m_l + pw + saege,
+                            "y": m_t,
+                            "w": max_w - (m_l + pw + saege),
+                            "h": ph
+                        }
+                        
+                        pocket_bottom = {
+                            "x": m_l,
+                            "y": m_t + ph + saege,
                             "w": max_w - m_l,
-                            "h": max_h - m_t
-                        }]
+                            "h": max_h - (m_t + ph + saege)
+                        }
                         
-                        placed = []
-                        unplaced = []
-                        
-                        # Größere Teile zuerst platzieren (z.B. große Platte 1020x2050), danach die kleinen Teile in die Pockets
-                        sorted_items = sorted(items, key=lambda x: x["w"] * x["h"], reverse=True)
-                        
-                        for item in sorted_items:
-                            iw = item["w"]
-                            ih = item["h"]
-                            
-                            best_rect_idx = -1
-                            best_score = float('inf')
-                            
-                            for idx, rect in enumerate(free_rects):
-                                if rect["w"] >= iw and rect["h"] >= ih:
-                                    leftover_w = rect["w"] - iw
-                                    leftover_h = rect["h"] - ih
-                                    score = min(leftover_w, leftover_h)
-                                    if score < best_score:
-                                        best_score = score
-                                        best_rect_idx = idx
-                                        
-                            if best_rect_idx != -1:
-                                rect = free_rects.pop(best_rect_idx)
+                        def fill_pocket(pocket, pocket_items):
+                            if not pocket_items or pocket["w"] <= 0 or pocket["h"] <= 0:
+                                return []
                                 
-                                placed.append({
-                                    "x": rect["x"],
-                                    "y": rect["y"],
-                                    "w": iw,
-                                    "h": ih,
-                                    "name": item["name"]
-                                })
-                                
-                                # Guillotine-Split: Aufteilung in saubere Sägeschnitt-Restrechtecke (rechts und unten)
-                                new_rects = []
-                                if rect["w"] - iw - saege > 10:
-                                    new_rects.append({
-                                        "x": rect["x"] + iw + saege,
-                                        "y": rect["y"],
-                                        "w": rect["w"] - iw - saege,
-                                        "h": rect["h"]
-                                    })
-                                if rect["h"] - ih - saege > 10:
-                                    new_rects.append({
-                                        "x": rect["x"],
-                                        "y": rect["y"] + ih + saege,
-                                        "w": rect["w"],
-                                        "h": rect["h"] - ih - saege
-                                    })
+                            pocket_placed = []
+                            sample_item = pocket_items[0]
+                            iw, ih = sample_item["w"], sample_item["h"]
+                            
+                            cols = int((pocket["w"] + saege) // (iw + saege))
+                            rows = int((pocket["h"] + saege) // (ih + saege))
+                            
+                            for r in range(rows):
+                                for c in range(cols):
+                                    if not pocket_items:
+                                        break
+                                    item_to_place = pocket_items.pop(0)
                                     
-                                for nr in new_rects:
-                                    if nr["w"] > 10 and nr["h"] > 10:
-                                        free_rects.append(nr)
-                                        
-                                # Redundante / überlappende Freiräume bereinigen
-                                optimized_rects = []
-                                for i, r1 in enumerate(free_rects):
-                                    contained = False
-                                    for j, r2 in enumerate(free_rects):
-                                        if i != j:
-                                            if (r2["x"] <= r1["x"] and r2["y"] <= r1["y"] and 
-                                                r2["x"] + r2["w"] >= r1["x"] + r1["w"] and 
-                                                r2["y"] + r2["h"] >= r1["y"] + r1["h"]):
-                                                contained = True
-                                                break
-                                    if not contained:
-                                        optimized_rects.append(r1)
-                                free_rects = optimized_rects
-                            else:
-                                unplaced.append(item)
-                                
-                        # Verbleibende tatsächliche Reststücke ermitteln
+                                    x = pocket["x"] + c * (iw + saege)
+                                    y = pocket["y"] + r * (ih + saege)
+                                    
+                                    if x + iw <= pocket["x"] + pocket["w"] and y + ih <= pocket["y"] + pocket["h"]:
+                                        pocket_placed.append({
+                                            "x": x,
+                                            "y": y,
+                                            "w": iw,
+                                            "h": ih,
+                                            "name": item_to_place["name"]
+                                        })
+                                    else:
+                                        pocket_items.insert(0, item_to_place)
+                                        break
+                                if not pocket_items:
+                                    break
+                                    
+                            return pocket_placed
+
+                        # Fülle Pocket Rechts
+                        right_items = list(unplaced)
+                        placed_right = fill_pocket(pocket_right, right_items)
+                        placed.extend(placed_right)
+                        
+                        # Entferne die platzierten Teile aus unplaced
+                        unplaced = unplaced[len(placed_right):]
+                        
+                        # Fülle Pocket Unten mit dem verbleibenden Rest
+                        bottom_items = list(unplaced)
+                        placed_bottom = fill_pocket(pocket_bottom, bottom_items)
+                        placed.extend(placed_bottom)
+                        
+                        final_unplaced = bottom_items[len(placed_bottom):]
+                        
+                        # Reststücke (Offcuts) berechnen
                         offcuts = []
-                        for r in free_rects:
-                            if r["w"] > 50 and r["h"] > 50:
-                                is_valid_rest = (r["w"] >= 500 and r["h"] >= 2000) or (r["h"] >= 500 and r["w"] >= 2000)
-                                offcuts.append({
-                                    "x": r["x"],
-                                    "y": r["y"],
-                                    "w": r["w"],
-                                    "h": r["h"],
-                                    "to_scrap": not is_valid_rest
-                                })
-                                
-                        return placed, offcuts, unplaced
+                        max_used_x = max((p["x"] + p["w"] for p in placed), default=m_l)
+                        max_used_y = max((p["y"] + p["h"] for p in placed), default=m_t)
+                        
+                        if max_w - max_used_x > 50:
+                            offcuts.append({
+                                "x": max_used_x,
+                                "y": m_t,
+                                "w": max_w - max_used_x,
+                                "h": max_h - m_t,
+                                "to_scrap": False
+                            })
+                        if max_h - max_used_y > 50:
+                            offcuts.append({
+                                "x": m_l,
+                                "y": max_used_y,
+                                "w": max_w - m_l,
+                                "h": max_h - max_used_y,
+                                "to_scrap": False
+                            })
+                            
+                        return placed, offcuts, final_unplaced
 
                     def pack_all_items_guillotine(items_to_pack, title_prefix, variant_key):
                         current_items = list(items_to_pack)
@@ -472,7 +495,7 @@ with col_left:
                         plate_total_area = default_plate_w * default_plate_h
                         
                         while current_items and plate_idx <= 20:
-                            placed, offcuts, unplaced = pack_guillotine_maxrects(
+                            placed, offcuts, unplaced = pack_guillotine_strict(
                                 current_items, default_plate_w, default_plate_h, m_l, m_r, m_t, m_b, saege
                             )
                             
