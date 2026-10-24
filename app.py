@@ -9,12 +9,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# Benutzerdefiniertes CSS für ansprechende, grüne Hinzufügen-Buttons
+# Benutzerdefiniertes CSS für perfekte Button-Ausrichtung und Lesbarkeit
 st.markdown("""
 <style>
-    /* Styling für die Hinzufügen-Buttons */
-    div.stButton > button {
-        font-weight: bold;
+    /* Exakte Ausrichtung der Hinzufügen-Buttons auf Höhe der Eingabefelder */
+    .add-btn-col {
+        padding-top: 28px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -127,8 +127,8 @@ with col_left:
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Spalten für Rohplatten optimiert mit deutlichem Hinzufügen-Button
-        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.4, 1.4, 1.4, 1.4, 1.0, 1.8])
+        # Spaltenverhältnis angepasst: Letzte Spalte breit genug für den vollständigen Text
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.3, 1.3, 1.3, 1.3, 0.9, 2.4])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
@@ -141,13 +141,14 @@ with col_left:
         with rc5:
             roh_anz = st.number_input("Anz", value=1, min_value=1, format="%d", key="roh_anz_input", label_visibility="collapsed")
         with rc6:
-            st.write("")
+            st.markdown('<div class="add-btn-col">', unsafe_allow_html=True)
             if st.button("➕ Hinzufügen", key="add_roh", use_container_width=True, type="secondary"):
                 bez = f"Pressplatte_{int(st.session_state.roh_l_input)}x{int(st.session_state.roh_h_input)}"
                 st.session_state.rohplatten.append({
                     "Bezeichnung": bez, "Länge (mm)": st.session_state.roh_l_input, "Höhe (mm)": st.session_state.roh_h_input, "Stärke": st.session_state.sel_roh_st, "Stk.": roh_anz
                 })
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
         if st.session_state.rohplatten:
             df_roh = pd.DataFrame(st.session_state.rohplatten)
@@ -162,7 +163,7 @@ with col_left:
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
-        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.4, 1.4, 1.4, 1.4, 1.0, 1.8])
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.3, 1.3, 1.3, 1.3, 0.9, 2.4])
         with tc1:
             sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset", on_change=update_teil_dims)
 
@@ -175,13 +176,14 @@ with col_left:
         with tc5:
             teil_anz = st.number_input("Anz", value=3, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
         with tc6:
-            st.write("")
+            st.markdown('<div class="add-btn-col">', unsafe_allow_html=True)
             if st.button("➕ Hinzufügen", key="add_teil", use_container_width=True, type="secondary"):
                 name = f"{int(st.session_state.teil_l_input)}x{int(st.session_state.teil_h_input)}"
                 st.session_state.bauteile.append({
                     "Position": name, "Länge (mm)": st.session_state.teil_l_input, "Höhe (mm)": st.session_state.teil_h_input, "Stärke (mm)": st.session_state.teil_st_input, "Anz.": teil_anz
                 })
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
         uploaded_file = st.file_uploader("Arbeitskarte laden (OCR Bild/PDF)", type=["png", "jpg", "jpeg", "pdf"], key="up_ocr")
         if uploaded_file is not None:
