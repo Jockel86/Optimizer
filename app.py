@@ -225,13 +225,13 @@ with col_left:
                 freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, format="%d", key="num_f_anzahl")
             freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True, key="radio_f_kante")
 
-    # 3. Verfügbare Pressplatten (Rohmaterial) - Angepasste Spaltenbreiten für Stärke
+    # 3. Verfügbare Pressplatten (Rohmaterial) - Optimierte Spaltenbreiten
     st.markdown("### 1. Verfügbare Pressplatten (Rohmaterial)")
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Spalte 4 (Stärke) wurde vergrößert ([1.8]), damit das Dropdown vollständig sichtbar ist
-        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.1, 1.2, 1.2, 1.8, 0.8, 2.5])
+        # Perfekt angepasste Spaltenbreiten für volle Lesbarkeit aller Felder
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.2, 1.3, 1.3, 1.5, 0.8, 2.3])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=3, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
@@ -266,7 +266,7 @@ with col_left:
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
-        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.1, 1.2, 1.2, 1.8, 0.8, 2.5])
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.2, 1.3, 1.3, 1.5, 0.8, 2.3])
         with tc1:
             sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset", on_change=update_teil_dims)
 
