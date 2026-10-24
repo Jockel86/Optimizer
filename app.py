@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
-from PIL import Image
-import io
+import math
 
 # Seitenkonfiguration im Wide-Modus
 st.set_page_config(
@@ -10,13 +9,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# Session State Initialisierung für Tabellen
+# Session State Initialisierung
 if "rohplatten" not in st.session_state:
     st.session_state.rohplatten = []
 if "bauteile" not in st.session_state:
     st.session_state.bauteile = []
+if "optimized_layouts" not in st.session_state:
+    st.session_state.optimized_layouts = []
 
-# Hauptlayout in zwei Spalten aufteilen (Links: Eingaben, Rechts: Vorschau & Tabellen)
 col_left, col_right = st.columns([5, 7], gap="medium")
 
 with col_left:
@@ -32,11 +32,11 @@ with col_left:
     with st.container(border=True):
         c1, c2 = st.columns(2)
         with c1:
-            schnittfuge = st.selectbox("Schnittfuge (mm):", ["4", "4.5", "5", "6", "6.5"], index=3)
+            schnittfuge = st.selectbox("Schnittfuge (mm):", ["4", "4.5", "5", "6", "6.5"], index=3, key="sel_schnittfuge")
         with c2:
-            max_saege_hoehe = st.number_input("Max. Säge-Höhe:", value=100)
+            max_saege_hoehe = st.number_input("Max. Säge-Höhe:", value=100, key="num_saegehoehe")
         
-        drehbar = st.checkbox("Bauteile drehbar (90°)", value=True)
+        drehbar = st.checkbox("Bauteile drehbar (90°)", value=True, key="chk_drehbar")
         
         st.write("Aufteilung:")
         aufteilung = st.radio(
@@ -44,7 +44,8 @@ with col_left:
             ["Kopfkanten / Kopfschnitte", "Längskanten / Längsschnitte", "Optimal"], 
             index=2, 
             label_visibility="collapsed", 
-            horizontal=True
+            horizontal=True,
+            key="radio_aufteilung"
         )
 
         with st.expander("Besäumung (Kantenabzug)"):
@@ -54,19 +55,19 @@ with col_left:
                 besaeum_mass = st.number_input("Maß pro Kante (mm):", value=10, key="num_besaeum")
             with bc2:
                 st.write("")
-                besaeum_laenge = st.checkbox("Längskanten", value=True)
+                besaeum_laenge = st.checkbox("Längskanten", value=True, key="chk_b_laenge")
             with bc3:
                 st.write("")
-                besaeum_hoehe = st.checkbox("Kopfkanten", value=True)
+                besaeum_hoehe = st.checkbox("Kopfkanten", value=True, key="chk_b_hoehe")
 
         with st.expander("Spannungsfreischnitt"):
             freischnitt_aktiv = st.checkbox("Spannungsfreischnitt aktivieren", key="chk_freischnitt")
             fc1, fc2 = st.columns(2)
             with fc1:
-                freischnitt_breite = st.number_input("Breite (mm):", value=15)
+                freischnitt_breite = st.number_input("Breite (mm):", value=15, key="num_f_breite")
             with fc2:
-                freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1)
-            freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True)
+                freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, key="num_f_anzahl")
+            freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True, key="radio_f_kante")
 
     # 3. Verfügbare Pressplatten (Rohmaterial)
     st.markdown("### 1. Verfügbare Pressplatten (Rohmaterial)")
@@ -75,7 +76,7 @@ with col_left:
         
         rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2, 1.5, 1.5, 1.5, 1, 0.8])
         with rc1:
-            sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed")
+            sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset")
         
         def_l, def_h = 6180, 2560
         if sel_roh_preset and "x" in sel_roh_preset:
@@ -87,7 +88,7 @@ with col_left:
         with rc3:
             roh_h = st.number_input("H", value=def_h, key="roh_h_input", label_visibility="collapsed")
         with rc4:
-            roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed")
+            roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed", key="sel_roh_st")
         with rc5:
             roh_anz = st.number_input("Anz", value=1, min_value=1, key="roh_anz_input", label_visibility="collapsed")
         with rc6:
@@ -117,7 +118,7 @@ with col_left:
         }
         tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2, 1.5, 1.5, 1.2, 1, 1.5])
         with tc1:
-            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=1, label_visibility="collapsed") # Standard auf 2030x1250 gesetzt
+            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=1, label_visibility="collapsed", key="sel_teil_preset")
         def_tl, def_th = standard_teile[sel_teil]
 
         with tc2:
@@ -127,7 +128,7 @@ with col_left:
         with tc4:
             teil_st = st.number_input("St", value=15, key="teil_st_input", label_visibility="collapsed")
         with tc5:
-            teil_anz = st.number_input("Anz", value=3, min_value=1, key="teil_anz_input", label_visibility="collapsed") # Standard auf 3 Stück
+            teil_anz = st.number_input("Anz", value=3, min_value=1, key="teil_anz_input", label_visibility="collapsed")
         with tc6:
             if st.button("➕", key="add_teil", use_container_width=True):
                 name = f"{int(teil_l)}x{int(teil_h)}"
@@ -136,7 +137,7 @@ with col_left:
                 })
                 st.rerun()
 
-        uploaded_file = st.file_uploader("Arbeitskarte laden (OCR Bild/PDF)", type=["png", "jpg", "jpeg", "pdf"])
+        uploaded_file = st.file_uploader("Arbeitskarte laden (OCR Bild/PDF)", type=["png", "jpg", "jpeg", "pdf"], key="up_ocr")
         if uploaded_file is not None:
             st.success(f"Arbeitskarte {uploaded_file.name} erfolgreich geladen!")
 
@@ -156,52 +157,142 @@ with col_left:
             if st.button("Zurücksetzen", use_container_width=True):
                 st.session_state.rohplatten = []
                 st.session_state.bauteile = []
+                st.session_state.optimized_layouts = []
                 st.rerun()
         with act2:
             if st.button("Optimieren", type="primary", use_container_width=True):
+                # Standardplatte falls keine Rohplatte in der Tabelle ist
+                if not st.session_state.rohplatten:
+                    default_plate_w, default_plate_h = 6180, 2560
+                else:
+                    default_plate_w = st.session_state.rohplatten[0]["Länge (mm)"]
+                    default_plate_h = st.session_state.rohplatten[0]["Höhe (mm)"]
+                
+                saege = float(schnittfuge)
+                
+                # Alle Teile anhand der Stückzahl expandieren
+                all_items = []
+                for idx, t in enumerate(st.session_state.bauteile):
+                    for i in range(t["Anz."]):
+                        all_items.append({
+                            "w": t["Länge (mm)"],
+                            "h": t["Höhe (mm)"],
+                            "name": t["Position"]
+                        })
+                
+                # Einfache Pack-Logik für die Vorschau
+                placed = []
+                cur_x = 40.0
+                cur_y = 40.0
+                row_h = 0.0
+                
+                for item in all_items:
+                    w = item["w"]
+                    h = item["h"]
+                    if cur_x + w > default_plate_w - 40:
+                        cur_x = 40.0
+                        cur_y += row_h + saege
+                        row_h = 0.0
+                    placed.append({
+                        "x": cur_x,
+                        "y": cur_y,
+                        "w": w,
+                        "h": h,
+                        "name": item["name"]
+                    })
+                    row_h = max(row_h, h)
+                    cur_x += w + saege
+                
+                st.session_state.optimized_layouts = [{
+                    "plate_w": default_plate_w,
+                    "plate_h": default_plate_h,
+                    "placed": placed
+                }]
                 st.success("Zuschnitt & Reststücke erfolgreich berechnet!")
+                st.rerun()
 
 with col_right:
-    # Rechte Spalte: Obere Steuerungsleiste
+    # Obere Steuerungsleiste
     header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
     with header_c1:
-        st.selectbox("Schnittplan:", ["Schnittplan 1 (1 Platte einzeln) [Ausnutzung: 19.65%]"], label_visibility="visible")
+        plan_options = [f"Schnittplan {i+1} [Platte {int(lay['plate_w'])}x{int(lay['plate_h'])}mm]" for i, lay in enumerate(st.session_state.optimized_layouts)] if st.session_state.optimized_layouts else ["Kein Schnittplan berechnet"]
+        selected_plan = st.selectbox("Schnittplan:", plan_options, label_visibility="visible", key="sel_plan")
     with header_c2:
         st.write("")
-        st.checkbox("Reststücke", value=True)
+        rest_chk = st.checkbox("Reststücke", value=True, key="chk_rest")
     with header_c3:
         st.write("")
-        if st.button("Drucken / PDF Export", use_container_width=True):
+        if st.button("Drucken / PDF Export", use_container_width=True, key="btn_pdf"):
             st.info("PDF-Export wird vorbereitet...")
 
-    # Grafik-Vorschau
+    # Dynamische SVG-Vorschau basierend auf den echten Daten
     st.markdown("### Schnittplan-Vorschau")
-    svg_code = '''
-    <div style="background-color: transparent; padding: 0px;">
-        <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-            <text x="35" y="25" fill="#555555" font-family="Segoe UI" font-size="12">Pfeil = Schnittrichtung</text>
-            <rect x="35" y="35" width="630" height="260" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
-            <rect x="50" y="50" width="300" height="200" fill="#3498db" opacity="0.9" stroke="#2c3e50"/>
-            <text x="200" y="155" fill="white" font-family="Segoe UI" font-size="14" font-weight="bold" text-anchor="middle">2030 x 1250 x 15 mm</text>
-        </svg>
-    </div>
-    '''
+    
+    if st.session_state.optimized_layouts:
+        layout = st.session_state.optimized_layouts[0]
+        pw = layout["plate_w"]
+        ph = layout["plate_h"]
+        
+        svg_w = 700
+        svg_h = 350
+        scale = min((svg_w - 60) / pw, (svg_h - 60) / ph) if pw > 0 and ph > 0 else 1
+        
+        draw_w = pw * scale
+        draw_h = ph * scale
+        start_x = (svg_w - draw_w) / 2
+        start_y = (svg_h - draw_h) / 2
+        
+        rects_svg = ""
+        colors = ["#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#d35400"]
+        
+        for idx, p in enumerate(layout["placed"]):
+            rx = start_x + p["x"] * scale
+            ry = start_y + p["y"] * scale
+            rw = p["w"] * scale
+            rh = p["h"] * scale
+            color = colors[idx % len(colors)]
+            
+            rects_svg += f'''
+                <rect x="{rx}" y="{ry}" width="{rw}" height="{rh}" fill="{color}" opacity="0.9" stroke="#2c3e50" stroke-width="1.5"/>
+                <text x="{rx + rw/2}" y="{ry + rh/2}" fill="white" font-family="Segoe UI" font-size="11" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(p["w"])} x {int(p["h"])}</text>
+            '''
+        
+        svg_code = f'''
+        <div style="background-color: transparent; padding: 0px;">
+            <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <text x="35" y="22" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Skaliert)</text>
+                <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
+                {rects_svg}
+            </svg>
+        </div>
+        '''
+    else:
+        svg_code = '''
+        <div style="background-color: transparent; padding: 0px;">
+            <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <text x="35" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
+                <rect x="35" y="45" width="630" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
+            </svg>
+        </div>
+        '''
+        
     st.components.v1.html(svg_code, height=370)
 
-    # Bauteil- und Mengenübersicht (jetzt dynamisch aus st.session_state.bauteile)
+    # Bauteil- und Mengenübersicht
     st.markdown("### Bauteil- und Mengenübersicht (Industrie-Standard)")
     
     if st.session_state.bauteile:
         info_rows = []
         for item in st.session_state.bauteile:
             gesamt = item["Anz."]
+            auf_plan = gesamt if st.session_state.optimized_layouts else 0
             info_rows.append([
                 item["Position"],
                 int(item["Länge (mm)"]),
                 int(item["Höhe (mm)"]),
                 gesamt,
                 0,  # bisher geschnitten
-                gesamt,  # auf diesem Plan
+                auf_plan,  # auf diesem Plan
                 0   # Rest Menge
             ])
         info_data = pd.DataFrame(info_rows, columns=[
