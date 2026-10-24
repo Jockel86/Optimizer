@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import math
+from collections import defaultdict
 
 # Seitenkonfiguration im Wide-Modus
 st.set_page_config(
@@ -171,49 +171,55 @@ with col_left:
                 
                 saege = float(schnittfuge)
                 
-                # Alle Teile anhand der Stückzahl expandieren
-                all_items = []
+                # Bauteile nach Typ und Stückzahl aggregieren
+                item_counts = defaultdict(int)
+                item_dims = {}
                 for t in st.session_state.bauteile:
-                    for _ in range(int(t["Anz."])):
-                        all_items.append({
-                            "w": t["Länge (mm)"],
-                            "h": t["Höhe (mm)"],
-                            "name": t["Position"]
-                        })
+                    key = (t["Länge (mm)"], t["Höhe (mm)"], t["Position"])
+                    item_counts[key] += int(t["Anz."])
+                    item_dims[key] = (t["Länge (mm)"], t["Höhe (mm)"], t["Position"])
                 
-                # Intelligente Sortierung nach Höhe (absteigend) für Streifen-/Reihenbildung
-                all_items.sort(key=lambda x: x["h"], reverse=True)
+                # Nach Höhe absteigend sortieren für saubere Reihenbildung
+                sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
                 
-                # Streifen- / Reihen-Packalgorithmus (Guillotine-konform)
                 placed = []
-                margin = 40.0
-                cur_x = margin
+                margin = 20.0
                 cur_y = margin
-                row_h = 0.0
+                max_plate_w = default_plate_w - margin
                 
-                max_width = default_plate_w - margin
-                
-                for item in all_items:
-                    w = item["w"]
-                    h = item["h"]
+                for key in sorted_keys:
+                    w, h, name = item_dims[key]
+                    remaining_count = item_counts[key]
                     
-                    # Prüfen, ob das Teil noch in die aktuelle Reihe passt (inklusive Schnittfuge)
-                    if cur_x + w > max_width:
-                        # Neue Reihe beginnen
+                    while remaining_count > 0:
                         cur_x = margin
-                        cur_y += row_h + saege
-                        row_h = 0.0
-                    
-                    placed.append({
-                        "x": cur_x,
-                        "y": cur_y,
-                        "w": w,
-                        "h": h,
-                        "name": item["name"]
-                    })
-                    
-                    row_h = max(row_h, h)
-                    cur_x += w + saege
+                        row_items = []
+                        
+                        # Packe so viele identische Teile wie möglich in diese Reihe
+                        while remaining_count > 0:
+                            needed_w = w if not row_items else (w + saege)
+                            if cur_x + needed_w <= max_plate_w:
+                                if row_items:
+                                    cur_x += saege
+                                row_items.append((cur_x, cur_y, w, h, name))
+                                cur_x += w
+                                remaining_count -= 1
+                            else:
+                                break
+                        
+                        if not row_items:
+                            break
+                            
+                        for rx, ry, rw, rh, rname in row_items:
+                            placed.append({
+                                "x": rx,
+                                "y": ry,
+                                "w": rw,
+                                "h": rh,
+                                "name": rname
+                            })
+                        
+                        cur_y += h + saege
                 
                 st.session_state.optimized_layouts = [{
                     "plate_w": default_plate_w,
@@ -247,7 +253,7 @@ with col_right:
         
         svg_w = 700
         svg_h = 350
-        scale = min((svg_w - 80) / pw, (svg_h - 80) / ph) if pw > 0 and ph > 0 else 1
+        scale = min((svg_w - 60) / pw, (svg_h - 60) / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
         draw_h = ph * scale
@@ -272,7 +278,7 @@ with col_right:
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="40" y="25" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Reihen-Optimierung)</text>
+                <text x="30" y="22" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Industrie-Streifenoptimierung)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
                 {rects_svg}
             </svg>
@@ -282,8 +288,8 @@ with col_right:
         svg_code = '''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="40" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
-                <rect x="40" y="45" width="620" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
+                <text x="35" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
+                <rect x="35" y="45" width="630" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
             </svg>
         </div>
         '''
