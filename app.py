@@ -537,8 +537,8 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # Vergrößerte Dropdown-Spalte für vollständige Lesbarkeit
-    header_c1, header_c2, header_c3, header_c4 = st.columns([6.0, 2.2, 1.2, 2.0])
+    # 3 Spalten: Dropdown (großzügig), Reststücke (Checkbox), PDF-Download
+    header_c1, header_c2, header_c3 = st.columns([6.5, 1.5, 2.5])
     selected_index = 0
     with header_c1:
         if st.session_state.optimized_layouts:
@@ -550,18 +550,9 @@ with col_right:
             
     with header_c2:
         st.write("")
-        if st.session_state.optimized_layouts:
-            if st.button("📌 Nur diesen behalten", use_container_width=True, key="btn_keep_variant"):
-                selected_layout = st.session_state.optimized_layouts[selected_index]
-                st.session_state.optimized_layouts = [selected_layout]
-                st.success("Nur diese Platte / Variante behalten – alle anderen wurden entfernt!")
-                st.rerun()
-
-    with header_c3:
-        st.write("")
         rest_chk = st.checkbox("Reststücke", value=True, key="chk_rest")
 
-    with header_c4:
+    with header_c3:
         st.write("")
         if st.session_state.optimized_layouts:
             current_layouts_list = st.session_state.optimized_layouts
