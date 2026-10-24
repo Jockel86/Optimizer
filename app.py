@@ -375,136 +375,140 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                def try_pack(items_to_pack):
-                    items = sorted(items_to_pack, key=lambda x: (x["h"], x["w"]), reverse=True)
-                    placed_items = []
-                    offcuts = []
+                # Robuster Multi-Platten-Packer (verteilt überschüssige Teile auf Folgeplatten)
+                def pack_all_items(items_to_pack, title_prefix):
+                    current_items = list(items_to_pack)
+                    plate_idx = 1
+                    generated_layouts = []
                     
-                    cur_y = m_t
-                    max_plate_w = default_plate_w - m_r
-                    max_plate_h = default_plate_h - m_b
-                    
-                    remaining_items = list(items)
-                    
-                    while remaining_items and cur_y < max_plate_h:
-                        row_item = remaining_items.pop(0)
-                        row_h = row_item["h"]
+                    while current_items and plate_idx <= 20:
+                        placed_items = []
+                        offcuts = []
+                        cur_y = m_t
+                        max_plate_w = default_plate_w - m_r
+                        max_plate_h = default_plate_h - m_b
                         
-                        if cur_y + row_h > max_plate_h:
-                            return None, None
+                        remaining_on_plate = list(current_items)
+                        remaining_on_plate.sort(key=lambda x: (x["h"], x["w"]), reverse=True)
+                        
+                        plate_placed = []
+                        next_remaining = []
+                        
+                        while remaining_on_plate and cur_y < max_plate_h:
+                            row_item = remaining_on_plate.pop(0)
+                            row_h = row_item["h"]
                             
-                        cur_x = m_l
-                        row_items = []
-                        
-                        # Erstes Bauteil der Zeile hinzufügen
-                        row_items.append({
-                            "x": cur_x,
-                            "y": cur_y,
-                            "w": row_item["w"],
-                            "h": row_h,
-                            "name": row_item["name"]
-                        })
-                        cur_x += row_item["w"]
-                        
-                        # Weitere passende Bauteile gierig in dieselbe Zeile packen
-                        i = 0
-                        while i < len(remaining_items):
-                            item = remaining_items[i]
-                            needed_w = item["w"] + saege
-                            if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
-                                cur_x += saege
-                                row_items.append({
-                                    "x": cur_x,
-                                    "y": cur_y,
-                                    "w": item["w"],
-                                    "h": item["h"],
-                                    "name": item["name"]
-                                })
-                                cur_x += item["w"]
-                                remaining_items.pop(i)
-                            else:
-                                i += 1
+                            if cur_y + row_h > max_plate_h:
+                                next_remaining.append(row_item)
+                                next_remaining.extend(remaining_on_plate)
+                                break
                                 
-                        placed_items.extend(row_items)
-                        
-                        row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
-                        right_offcut_w = max_plate_w - row_end_x
-                        if right_offcut_w > 20:
-                            to_scrap = (right_offcut_w < 600 and row_h < 2000) or (row_h < 600 and right_offcut_w < 2000)
-                            offcuts.append({
-                                "x": row_end_x,
+                            cur_x = m_l
+                            row_items = [{
+                                "x": cur_x,
                                 "y": cur_y,
-                                "w": right_offcut_w,
+                                "w": row_item["w"],
                                 "h": row_h,
-                                "to_scrap": to_scrap
-                            })
+                                "name": row_item["name"]
+                            }]
+                            cur_x += row_item["w"]
                             
-                        cur_y += row_h + saege
-                        
-                    if placed_items:
-                        max_used_y = max(p["y"] + p["h"] for p in placed_items)
-                        bottom_offcut_h = max_plate_h - max_used_y
-                        if bottom_offcut_h > 20:
-                            offcut_w = max_plate_w - m_l
-                            to_scrap = (offcut_w < 600 and bottom_offcut_h < 2000) or (bottom_offcut_h < 600 and offcut_w < 2000)
-                            offcuts.append({
-                                "x": m_l,
-                                "y": max_used_y,
-                                "w": offcut_w,
-                                "h": bottom_offcut_h,
-                                "to_scrap": to_scrap
-                            })
+                            i = 0
+                            while i < len(remaining_on_plate):
+                                item = remaining_on_plate[i]
+                                needed_w = item["w"] + saege
+                                if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
+                                    cur_x += saege
+                                    row_items.append({
+                                        "x": cur_x,
+                                        "y": cur_y,
+                                        "w": item["w"],
+                                        "h": item["h"],
+                                        "name": item["name"]
+                                    })
+                                    cur_x += item["w"]
+                                    remaining_on_plate.pop(i)
+                                else:
+                                    i += 1
+                                    
+                            plate_placed.extend(row_items)
                             
-                    if remaining_items:
-                        return None, None
+                            row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
+                            right_offcut_w = max_plate_w - row_end_x
+                            if right_offcut_w > 20:
+                                to_scrap = (right_offcut_w < 600 and row_h < 2000) or (row_h < 600 and right_offcut_w < 2000)
+                                offcuts.append({
+                                    "x": row_end_x,
+                                    "y": cur_y,
+                                    "w": right_offcut_w,
+                                    "h": row_h,
+                                    "to_scrap": to_scrap
+                                })
+                                
+                            cur_y += row_h + saege
+                            
+                        next_remaining.extend(remaining_on_plate)
                         
-                    return placed_items, offcuts
+                        if plate_placed:
+                            max_used_y = max(p["y"] + p["h"] for p in plate_placed)
+                            bottom_offcut_h = max_plate_h - max_used_y
+                            if bottom_offcut_h > 20:
+                                offcut_w = max_plate_w - m_l
+                                to_scrap = (offcut_w < 600 and bottom_offcut_h < 2000) or (bottom_offcut_h < 600 and offcut_w < 2000)
+                                offcuts.append({
+                                    "x": m_l,
+                                    "y": max_used_y,
+                                    "w": offcut_w,
+                                    "h": bottom_offcut_h,
+                                    "to_scrap": to_scrap
+                                })
+                            
+                            generated_layouts.append({
+                                "title": f"{title_prefix} - Platte {plate_idx}",
+                                "plate_w": default_plate_w,
+                                "plate_h": default_plate_h,
+                                "placed": plate_placed,
+                                "offcuts": offcuts
+                            })
+                            current_items = next_remaining
+                            plate_idx += 1
+                        else:
+                            break
+                            
+                    return generated_layouts if not current_items else []
 
                 layouts = []
 
-                # Variante 1: Normale Ausrichtung
+                # Alle Bauteile in eine Liste auflösen
                 items_normal = []
                 for t in st.session_state.bauteile:
                     for _ in range(int(t["Anz."])):
                         items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
                 
-                res_normal, off_normal = try_pack(items_normal)
-                if res_normal:
-                    layouts.append({
-                        "title": "Schnittplan 1: Standard-Ausrichtung",
-                        "plate_w": default_plate_w,
-                        "plate_h": default_plate_h,
-                        "placed": res_normal,
-                        "offcuts": off_normal
-                    })
+                norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)")
+                if norm_layouts:
+                    layouts.extend(norm_layouts)
 
-                # Variante 2: Gedrehte Ausrichtung (90 Grad)
+                # Gedrehte Variante (90°) prüfen
                 if drehbar_aktiv:
                     items_rotated = []
-                    valid_rotation = True
+                    valid_rot = True
                     for t in st.session_state.bauteile:
                         rw, rh = t["Höhe (mm)"], t["Länge (mm)"]
                         if rw > max_w_row or rh > max_h_plate:
-                            valid_rotation = False
+                            valid_rot = False
                         for _ in range(int(t["Anz."])):
                             items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
-                    
-                    if valid_rotation:
-                        res_rotated, off_rotated = try_pack(items_rotated)
-                        if res_rotated:
-                            layouts.append({
-                                "title": "Schnittplan 2: Gedrehte Ausrichtung (90°)",
-                                "plate_w": default_plate_w,
-                                "plate_h": default_plate_h,
-                                "placed": res_rotated,
-                                "offcuts": off_rotated
-                            })
+                    if valid_rot:
+                        rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)")
+                        if rot_layouts:
+                            layouts.extend(rot_layouts)
 
                 if layouts:
                     st.session_state.optimized_layouts = layouts
-                    st.success(f"{len(layouts)} Zuschnitt-Varianten erfolgreich berechnet!")
+                    st.success(f"{len(layouts)} Schnittpläne (Mehrplatten-Optimierung) erfolgreich berechnet!")
                 else:
-                    st.error("Bauteile passen nicht auf die gewählte Pressplatte!")
+                    st.error("Bauteile überschreiten die maximalen Pressplatten-Abmessungen!")
                 st.rerun()
 
 with col_right:
