@@ -72,28 +72,28 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion mit integrierter grafischer Vorschau, Besäumung und Reststücken
-def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_rest, besaeum_info):
+# PDF-Generierungsfunktion für alle Schnittpläne eines Auftrags
+def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font('helvetica', 'B', 16)
     
-    # Titel
-    pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
-    pdf.ln(3)
-    
-    # Kopfdaten / Metadaten
-    pdf.set_font('helvetica', 'B', 11)
-    pdf.cell(0, 6, 'Auftrags- & Kopfdaten:', 0, 1)
-    pdf.set_font('helvetica', '', 10)
-    pdf.cell(0, 5, f'Auftrag: {auftrag or "-"}', 0, 1)
-    pdf.cell(0, 5, f'Material: {material or "-"}', 0, 1)
-    pdf.cell(0, 5, f'Sonstiges: {sonstiges or "-"}', 0, 1)
-    pdf.ln(4)
-    
-    if layout:
+    # Für jeden Schnittplan eine eigene Seite generieren
+    for idx, layout in enumerate(layouts):
+        pdf.add_page()
+        pdf.set_font('helvetica', 'B', 16)
+        
+        # Titel
+        pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
+        pdf.ln(2)
+        
+        # Kopfdaten / Metadaten (auf jeder Seite für vollständige Zuordnung)
+        pdf.set_font('helvetica', 'B', 10)
+        pdf.cell(0, 5, 'Auftrags- & Kopfdaten:', 0, 1)
+        pdf.set_font('helvetica', '', 9)
+        pdf.cell(0, 4, f'Auftrag: {auftrag or "-"} | Material: {material or "-"} | Sonstiges: {sonstiges or "-"}', 0, 1)
+        pdf.ln(3)
+        
         pdf.set_font('helvetica', 'B', 11)
-        pdf.cell(0, 6, f'Gewählter Plan: {layout["title"]} (Auslastung: {layout["utilization"]}%)', 0, 1)
+        pdf.cell(0, 6, f'Plan-Details: {layout["title"]} (Auslastung: {layout["utilization"]}%)', 0, 1)
         pdf.set_font('helvetica', '', 10)
         pdf.cell(0, 5, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
         if besaeum_info["aktiv"]:
@@ -190,12 +190,11 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
                 pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
                 pdf.set_text_color(0, 0, 0)
                 
-        pdf.set_xy(start_x, start_y + draw_h + 6)
-        pdf.ln(4)
-        
-    # Bauteil- und Mengenübersicht Tabelle
-    pdf.set_font('helvetica', 'B', 11)
-    pdf.cell(0, 6, 'Bauteil- und Mengenübersicht:', 0, 1)
+    # Abschließend eine gemeinsame Bauteil- und Mengenübersicht-Seite anhängen
+    pdf.add_page()
+    pdf.set_font('helvetica', 'B', 14)
+    pdf.cell(0, 10, 'Bauteil- und Mengenübersicht (Gesamtauftrag)', 0, 1, 'L')
+    pdf.ln(3)
     
     pdf.set_font('helvetica', 'B', 10)
     pdf.set_fill_color(220, 220, 220)
@@ -531,7 +530,7 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # Vergrößerte Dropdown-Spalte (6.0), damit auch lange Titel voll sichtbar bleiben
+    # Optimierte Spaltenbreiten für volle Lesbarkeit im Dropdown
     header_c1, header_c2, header_c3, header_c4 = st.columns([6.0, 2.2, 1.2, 2.0])
     selected_index = 0
     with header_c1:
@@ -547,7 +546,6 @@ with col_right:
         if st.session_state.optimized_layouts:
             if st.button("📌 Nur diesen behalten", use_container_width=True, key="btn_keep_variant"):
                 selected_layout = st.session_state.optimized_layouts[selected_index]
-                # Exakt nur das aktuell im Dropdown ausgewählte Layout behalten
                 st.session_state.optimized_layouts = [selected_layout]
                 st.success("Nur diese Platte / Variante behalten – alle anderen wurden entfernt!")
                 st.rerun()
@@ -559,7 +557,8 @@ with col_right:
     with header_c4:
         st.write("")
         if st.session_state.optimized_layouts:
-            current_layout = st.session_state.optimized_layouts[selected_index]
+            # Gesamter Auftrags-Schnittplan (alle verbleibenden Layouts) an den PDF-Report übergeben
+            current_layouts_list = st.session_state.optimized_layouts
             
             besaeum_info = {
                 "aktiv": st.session_state.get("chk_besaeum", False),
@@ -573,7 +572,7 @@ with col_right:
                 st.session_state.get("inp_auftrag", ""),
                 st.session_state.get("inp_material", ""),
                 st.session_state.get("inp_sonstiges", ""),
-                current_layout,
+                current_layouts_list,
                 st.session_state.bauteile,
                 rest_chk,
                 besaeum_info
