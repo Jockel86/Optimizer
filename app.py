@@ -109,8 +109,8 @@ with col_left:
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Optimierte Spaltenbreiten für eine saubere, vollständige Darstellung ohne Abschneiden
-        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.6, 1.8, 1.8, 1.5, 1.2, 0.9])
+        # Perfekt optimierte Spaltenbreiten, damit auch Stärke und Dropdowns voll sichtbar sind
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.5, 1.6, 1.6, 1.8, 1.1, 0.8])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
@@ -143,7 +143,7 @@ with col_left:
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
-        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.6, 1.8, 1.8, 1.5, 1.2, 0.9])
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.5, 1.6, 1.6, 1.8, 1.1, 0.8])
         with tc1:
             sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset", on_change=update_teil_dims)
 
