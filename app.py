@@ -380,131 +380,141 @@ with col_left:
                 if oversized:
                     st.error("Fehler: Mindestens ein Bauteil ist größer als die verfügbare Pressplatte (inkl. Besäumung/Randabzug)!")
                 else:
-                    # Multi-Platten-Packer
-                    def pack_all_items(items_to_pack, title_prefix, variant_type_key):
+                    # 2D MaxRects / Free-Rectangles Packer Algorithmus für lückenlose Ausnutzung
+                    def pack_maxrects(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
+                        max_w = plate_w - m_r
+                        max_h = plate_h - m_b
+                        
+                        free_rects = [{
+                            "x": m_l,
+                            "y": m_t,
+                            "w": max_w - m_l,
+                            "h": max_h - m_t
+                        }]
+                        
+                        placed = []
+                        unplaced = []
+                        
+                        # Nach Fläche absteigend sortieren für optimale Raumausnutzung
+                        sorted_items = sorted(items, key=lambda x: x["w"] * x["h"], reverse=True)
+                        
+                        for item in sorted_items:
+                            iw = item["w"]
+                            ih = item["h"]
+                            
+                            best_rect_idx = -1
+                            best_short_side_fit = float('inf')
+                            best_long_side_fit = float('inf')
+                            
+                            # Bestes freies Rechteck finden (Heuristik: Best Short Side Fit)
+                            for idx, rect in enumerate(free_rects):
+                                if rect["w"] >= iw and rect["h"] >= ih:
+                                    leftover_w = rect["w"] - iw
+                                    leftover_h = rect["h"] - ih
+                                    short_side = min(leftover_w, leftover_h)
+                                    long_side = max(leftover_w, leftover_h)
+                                    
+                                    if short_side < best_short_side_fit or (short_side == best_short_side_fit and long_side < best_long_side_fit):
+                                        best_short_side_fit = short_side
+                                        best_long_side_fit = long_side
+                                        best_rect_idx = idx
+                                        
+                            if best_rect_idx != -1:
+                                rect = free_rects.pop(best_rect_idx)
+                                
+                                placed.append({
+                                    "x": rect["x"],
+                                    "y": rect["y"],
+                                    "w": iw,
+                                    "h": ih,
+                                    "name": item["name"]
+                                })
+                                
+                                # Restliche Freiräume aufteilen (Guillotine-Split mit Sägefuge)
+                                new_rects = []
+                                if rect["w"] - iw - saege > 20:
+                                    new_rects.append({
+                                        "x": rect["x"] + iw + saege,
+                                        "y": rect["y"],
+                                        "w": rect["w"] - iw - saege,
+                                        "h": rect["h"]
+                                    })
+                                if rect["h"] - ih - saege > 20:
+                                    new_rects.append({
+                                        "x": rect["x"],
+                                        "y": rect["y"] + ih + saege,
+                                        "w": rect["w"],
+                                        "h": rect["h"] - ih - saege
+                                    })
+                                    
+                                for nr in new_rects:
+                                    if nr["w"] > 20 and nr["h"] > 20:
+                                        free_rects.append(nr)
+                                        
+                                # Überlappende oder redundante Freiräume bereinigen
+                                optimized_rects = []
+                                for i, r1 in enumerate(free_rects):
+                                    contained = False
+                                    for j, r2 in enumerate(free_rects):
+                                        if i != j:
+                                            if (r2["x"] <= r1["x"] and r2["y"] <= r1["y"] and 
+                                                r2["x"] + r2["w"] >= r1["x"] + r1["w"] and 
+                                                r2["y"] + r2["h"] >= r1["y"] + r1["h"]):
+                                                contained = True
+                                                break
+                                    if not contained:
+                                        optimized_rects.append(r1)
+                                free_rects = optimized_rects
+                            else:
+                                unplaced.append(item)
+                                
+                        # Verbleibende freie Rechtecke als Reststücke erfassen
+                        offcuts = []
+                        for r in free_rects:
+                            if r["w"] > 50 and r["h"] > 50:
+                                is_valid_rest = (r["w"] >= 500 and r["h"] >= 2000) or (r["h"] >= 500 and r["w"] >= 2000)
+                                offcuts.append({
+                                    "x": r["x"],
+                                    "y": r["y"],
+                                    "w": r["w"],
+                                    "h": r["h"],
+                                    "to_scrap": not is_valid_rest
+                                })
+                                
+                        return placed, offcuts, unplaced
+
+                    def pack_all_items_maxrects(items_to_pack, title_prefix, variant_key):
                         current_items = list(items_to_pack)
                         plate_idx = 1
                         generated_layouts = []
-                        
                         plate_total_area = default_plate_w * default_plate_h
-
+                        
                         while current_items and plate_idx <= 20:
-                            cur_y = m_t
-                            max_plate_w = default_plate_w - m_r
-                            max_plate_h = default_plate_h - m_b
+                            placed, offcuts, unplaced = pack_maxrects(
+                                current_items, default_plate_w, default_plate_h, m_l, m_r, m_t, m_b, saege
+                            )
                             
-                            remaining_on_plate = list(current_items)
-                            remaining_on_plate.sort(key=lambda x: (x["h"], x["w"]), reverse=True)
-                            
-                            plate_placed = []
-                            next_remaining = []
-                            offcuts = []
-                            
-                            while remaining_on_plate and cur_y < max_plate_h:
-                                row_item = remaining_on_plate.pop(0)
-                                row_h = row_item["h"]
-                                
-                                if cur_y + row_h > max_plate_h:
-                                    next_remaining.append(row_item)
-                                    next_remaining.extend(remaining_on_plate)
-                                    break
-                                    
-                                cur_x = m_l
-                                row_items = [{
-                                    "x": cur_x,
-                                    "y": cur_y,
-                                    "w": row_item["w"],
-                                    "h": row_h,
-                                    "name": row_item["name"]
-                                }]
-                                cur_x += row_item["w"]
-                                
-                                i = 0
-                                while i < len(remaining_on_plate):
-                                    item = remaining_on_plate[i]
-                                    needed_w = item["w"] + saege
-                                    if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
-                                        cur_x += saege
-                                        row_items.append({
-                                            "x": cur_x,
-                                            "y": cur_y,
-                                            "w": item["w"],
-                                            "h": item["h"],
-                                            "name": item["name"]
-                                        })
-                                        cur_x += item["w"]
-                                        remaining_on_plate.pop(i)
-                                    else:
-                                        i += 1
-                                        
-                            # Interne Restflächen unter kürzeren Teilen in derselben Zeile prüfen
-                                for rit in row_items:
-                                    if rit["h"] < row_h:
-                                        sub_w = rit["w"]
-                                        sub_h = row_h - rit["h"]
-                                        if sub_w > 20 and sub_h > 20:
-                                            is_valid_rest = (sub_w >= 500 and sub_h >= 2000) or (sub_h >= 500 and sub_w >= 2000)
-                                            offcuts.append({
-                                                "x": rit["x"],
-                                                "y": rit["y"] + rit["h"],
-                                                "w": sub_w,
-                                                "h": sub_h,
-                                                "to_scrap": not is_valid_rest
-                                            })
-
-                                plate_placed.extend(row_items)
-                                
-                                row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
-                                right_offcut_w = max_plate_w - row_end_x
-                                if right_offcut_w > 20:
-                                    is_valid_rest = (right_offcut_w >= 500 and row_h >= 2000) or (row_h >= 500 and right_offcut_w >= 2000)
-                                    offcuts.append({
-                                        "x": row_end_x,
-                                        "y": cur_y,
-                                        "w": right_offcut_w,
-                                        "h": row_h,
-                                        "to_scrap": not is_valid_rest
-                                    })
-                                    
-                                cur_y += row_h + saege
-                                
-                            next_remaining.extend(remaining_on_plate)
-                            
-                            if plate_placed:
-                                max_used_y = max(p["y"] + p["h"] for p in plate_placed)
-                                bottom_offcut_h = max_plate_h - max_used_y
-                                if bottom_offcut_h > 20:
-                                    offcut_w = max_plate_w - m_l
-                                    is_valid_rest = (offcut_w >= 500 and bottom_offcut_h >= 2000) or (bottom_offcut_h >= 500 and offcut_w >= 2000)
-                                    offcuts.append({
-                                        "x": m_l,
-                                        "y": max_used_y,
-                                        "w": offcut_w,
-                                        "h": bottom_offcut_h,
-                                        "to_scrap": not is_valid_rest
-                                    })
-                                
-                                placed_area = sum(p["w"] * p["h"] for p in plate_placed)
+                            if placed:
+                                placed_area = sum(p["w"] * p["h"] for p in placed)
                                 utilization = round((placed_area / plate_total_area) * 100, 1)
-
+                                
                                 generated_layouts.append({
                                     "title": f"{title_prefix} - Platte {plate_idx}",
-                                    "variant_type": variant_type_key,
+                                    "variant_type": variant_key,
                                     "utilization": utilization,
                                     "plate_w": default_plate_w,
                                     "plate_h": default_plate_h,
-                                    "placed": plate_placed,
+                                    "placed": placed,
                                     "offcuts": offcuts
                                 })
-                                current_items = next_remaining
+                                current_items = unplaced
                                 plate_idx += 1
                             else:
                                 break
                                 
-                        return generated_layouts if not current_items else []
+                        return generated_layouts
 
                     layouts = []
-
                     items_normal = []
                     items_rotated = []
                     valid_rot = True
@@ -520,20 +530,20 @@ with col_left:
                             items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
 
                     if strategie == "Längsschnitte bevorzugen":
-                        norm_layouts = pack_all_items(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
+                        norm_layouts = pack_all_items_maxrects(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
                         if norm_layouts:
                             layouts.extend(norm_layouts)
                     elif strategie == "Kopfschnitte bevorzugen":
                         if valid_rot:
-                            rot_layouts = pack_all_items(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
+                            rot_layouts = pack_all_items_maxrects(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
                             if rot_layouts:
                                 layouts.extend(rot_layouts)
                     else:  # "Optimal"
-                        norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)", "Standard")
+                        norm_layouts = pack_all_items_maxrects(items_normal, "Schnittplan (Standard)", "Standard")
                         if norm_layouts:
                             layouts.extend(norm_layouts)
                         if valid_rot:
-                            rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
+                            rot_layouts = pack_all_items_maxrects(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
                             if rot_layouts:
                                 layouts.extend(rot_layouts)
 
@@ -677,7 +687,7 @@ with col_right:
                 '''
         
         svg_code = f'''
-        <div style="background-color: transparent; padding: 0px;">
+        <div style="background-content: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
                 <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']} — Auslastung: {layout['utilization']}%)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
@@ -687,7 +697,7 @@ with col_right:
         '''
     else:
         svg_code = '''
-        <div style="background-color: transparent; padding: 0px;">
+        <div style="background-content: transparent; padding: 0px;">
             <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
                 <text x="35" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
                 <rect x="35" y="45" width="630" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
