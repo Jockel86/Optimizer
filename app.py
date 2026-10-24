@@ -141,16 +141,12 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
+                    # Nur schraffieren / grau füllen ohne Text
                     pdf.set_fill_color(203, 213, 225)
                     pdf.set_draw_color(100, 116, 139)
                     pdf.rect(ox, oy, ow, oh, 'DF')
-                    if ow > 15 and oh > 8:
-                        pdf.set_font('helvetica', 'B', 6)
-                        pdf.set_text_color(185, 28, 28)
-                        pdf.set_xy(ox, oy + (oh / 2) - 3)
-                        pdf.cell(ow, 6, f'Klein schneiden: {int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
-                        pdf.set_text_color(0, 0, 0)
                 else:
+                    # Gültiges Reststück mit Bemaßung
                     pdf.set_fill_color(226, 232, 240)
                     pdf.set_draw_color(148, 163, 184)
                     pdf.rect(ox, oy, ow, oh, 'DF')
@@ -158,7 +154,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
                         pdf.set_font('helvetica', '', 7)
                         pdf.set_text_color(100, 116, 139)
                         pdf.set_xy(ox, oy + (oh / 2) - 3)
-                        pdf.cell(ow, 6, f'Rest: {int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
+                        pdf.cell(ow, 6, f'{int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
                         pdf.set_text_color(0, 0, 0)
 
         colors_rgb = [
@@ -375,7 +371,7 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Robuster Multi-Platten-Packer (verteilt überschüssige Teile auf Folgeplatten)
+                # Robuster Multi-Platten-Packer mit Mindestmaßprüfung für Reste (min 500 breit & min 2000 lang)
                 def pack_all_items(items_to_pack, title_prefix):
                     current_items = list(items_to_pack)
                     plate_idx = 1
@@ -436,7 +432,8 @@ with col_left:
                             row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
                             right_offcut_w = max_plate_w - row_end_x
                             if right_offcut_w > 20:
-                                to_scrap = (right_offcut_w < 600 and row_h < 2000) or (row_h < 600 and right_offcut_w < 2000)
+                                # Mindestmaße: Mindestens 500 breit UND 2000 lang. Alles darunter -> Schrott (to_scrap = True)
+                                to_scrap = (right_offcut_w < 500 and row_h < 2000) or (row_h < 500 and right_offcut_w < 2000)
                                 offcuts.append({
                                     "x": row_end_x,
                                     "y": cur_y,
@@ -454,7 +451,7 @@ with col_left:
                             bottom_offcut_h = max_plate_h - max_used_y
                             if bottom_offcut_h > 20:
                                 offcut_w = max_plate_w - m_l
-                                to_scrap = (offcut_w < 600 and bottom_offcut_h < 2000) or (bottom_offcut_h < 600 and offcut_w < 2000)
+                                to_scrap = (offcut_w < 500 and bottom_offcut_h < 2000) or (bottom_offcut_h < 500 and offcut_w < 2000)
                                 offcuts.append({
                                     "x": m_l,
                                     "y": max_used_y,
@@ -506,7 +503,7 @@ with col_left:
 
                 if layouts:
                     st.session_state.optimized_layouts = layouts
-                    st.success(f"{len(layouts)} Schnittpläne (Mehrplatten-Optimierung) erfolgreich berechnet!")
+                    st.success(f"{len(layouts)} Schnittpläne erfolgreich berechnet!")
                 else:
                     st.error("Bauteile überschreiten die maximalen Pressplatten-Abmessungen!")
                 st.rerun()
@@ -604,14 +601,15 @@ with col_right:
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
+                    # Schraffiert ohne Text für Schrott-Reste unter Mindestmaß
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
-                        <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#b91c1c" font-family="Segoe UI" font-size="9" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Klein schneiden: {int(o["w"])} x {int(o["h"])}</text>
                     '''
                 else:
+                    # Gültiges Reststück mit Bemaßung
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
-                        <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Rest: {int(o["w"])} x {int(o["h"])}</text>
+                        <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(o["w"])} x {int(o["h"])}</text>
                     '''
 
         colors = ["#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#d35400"]
