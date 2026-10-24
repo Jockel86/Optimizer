@@ -93,7 +93,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
     
     if layout:
         pdf.set_font('helvetica', 'B', 11)
-        pdf.cell(0, 6, f'Gewählter Plan: {layout["title"]}', 0, 1)
+        pdf.cell(0, 6, f'Gewählter Plan: {layout["title"]} (Auslastung: {layout["utilization"]}%)', 0, 1)
         pdf.set_font('helvetica', '', 10)
         pdf.cell(0, 5, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
         if besaeum_info["aktiv"]:
@@ -372,12 +372,14 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Multi-Platten-Packer mit Erfassung interner Zeilen-Restflächen und Mindestmaßprüfung
+                # Multi-Platten-Packer mit Flächenauslastungs-Berechnung
                 def pack_all_items(items_to_pack, title_prefix):
                     current_items = list(items_to_pack)
                     plate_idx = 1
                     generated_layouts = []
                     
+                    plate_total_area = default_plate_w * default_plate_h
+
                     while current_items and plate_idx <= 20:
                         placed_items = []
                         offcuts = []
@@ -475,8 +477,13 @@ with col_left:
                                     "to_scrap": not is_valid_rest
                                 })
                             
+                            # Auslastung in Prozent berechnen
+                            placed_area = sum(p["w"] * p["h"] for p in plate_placed)
+                            utilization = round((placed_area / plate_total_area) * 100, 1)
+
                             generated_layouts.append({
                                 "title": f"{title_prefix} - Platte {plate_idx}",
+                                "utilization": utilization,
                                 "plate_w": default_plate_w,
                                 "plate_h": default_plate_h,
                                 "placed": plate_placed,
@@ -528,7 +535,8 @@ with col_right:
     selected_index = 0
     with header_c1:
         if st.session_state.optimized_layouts:
-            plan_options = [lay["title"] for lay in st.session_state.optimized_layouts]
+            # Dropdown mit integrierter Auslastung in Prozent erweitert
+            plan_options = [f"{lay['title']} — Auslastung: {lay['utilization']}%" for lay in st.session_state.optimized_layouts]
             selected_plan_title = st.selectbox("Schnittplan-Variante wählen:", plan_options, label_visibility="visible", key="sel_plan_variant")
             selected_index = plan_options.index(selected_plan_title)
         else:
@@ -639,7 +647,6 @@ with col_right:
             rw = p["w"] * scale
             rh = p["h"] * scale
             
-            # Adaptive Schriftgröße für saubere Darstellung ohne Überlappungen
             font_size = 11
             if rw < 60 or rh < 25:
                 font_size = 8
@@ -657,7 +664,7 @@ with col_right:
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']})</text>
+                <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']} — Auslastung: {layout['utilization']}%)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
                 {rects_svg}
             </svg>
