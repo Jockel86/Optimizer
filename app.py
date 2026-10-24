@@ -195,7 +195,6 @@ with col_left:
                         cur_x = margin
                         row_items = []
                         
-                        # Packe so viele identische Teile wie möglich in diese Reihe
                         while remaining_count > 0:
                             needed_w = w if not row_items else (w + saege)
                             if cur_x + needed_w <= max_plate_w:
@@ -243,7 +242,7 @@ with col_right:
         if st.button("Drucken / PDF Export", use_container_width=True, key="btn_pdf"):
             st.info("PDF-Export wird vorbereitet...")
 
-    # Dynamische SVG-Vorschau mit echter Reihen-Optimierung
+    # Dynamische SVG-Vorschau mit einheitlicher Farbe pro Position
     st.markdown("### Schnittplan-Vorschau")
     
     if st.session_state.optimized_layouts:
@@ -262,13 +261,18 @@ with col_right:
         
         rects_svg = ""
         colors = ["#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#d35400"]
+        name_to_color = {}
         
-        for idx, p in enumerate(layout["placed"]):
+        for p in layout["placed"]:
+            rname = p["name"]
+            if rname not in name_to_color:
+                name_to_color[rname] = colors[len(name_to_color) % len(colors)]
+            color = name_to_color[rname]
+
             rx = start_x + p["x"] * scale
             ry = start_y + p["y"] * scale
             rw = p["w"] * scale
             rh = p["h"] * scale
-            color = colors[idx % len(colors)]
             
             rects_svg += f'''
                 <rect x="{rx}" y="{ry}" width="{rw}" height="{rh}" fill="{color}" opacity="0.9" stroke="#2c3e50" stroke-width="1.5"/>
@@ -278,7 +282,7 @@ with col_right:
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="30" y="22" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Industrie-Streifenoptimierung)</text>
+                <text x="30" y="22" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Einheitliche Positionsfarben)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
                 {rects_svg}
             </svg>
