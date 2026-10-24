@@ -117,7 +117,7 @@ with col_left:
         }
         tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2, 1.5, 1.5, 1.2, 1, 1.5])
         with tc1:
-            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed")
+            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=1, label_visibility="collapsed") # Standard auf 2030x1250 gesetzt
         def_tl, def_th = standard_teile[sel_teil]
 
         with tc2:
@@ -125,12 +125,12 @@ with col_left:
         with tc3:
             teil_h = st.number_input("H", value=def_th, key="teil_h_input", label_visibility="collapsed")
         with tc4:
-            teil_st = st.number_input("St", value=20, key="teil_st_input", label_visibility="collapsed")
+            teil_st = st.number_input("St", value=15, key="teil_st_input", label_visibility="collapsed")
         with tc5:
-            teil_anz = st.number_input("Anz", value=2, min_value=1, key="teil_anz_input", label_visibility="collapsed")
+            teil_anz = st.number_input("Anz", value=3, min_value=1, key="teil_anz_input", label_visibility="collapsed") # Standard auf 3 Stück
         with tc6:
             if st.button("➕", key="add_teil", use_container_width=True):
-                name = f"Pos_{int(teil_l)}x{int(teil_h)}"
+                name = f"{int(teil_l)}x{int(teil_h)}"
                 st.session_state.bauteile.append({
                     "Position": name, "Länge (mm)": teil_l, "Höhe (mm)": teil_h, "Stärke (mm)": teil_st, "Anz.": teil_anz
                 })
@@ -188,12 +188,30 @@ with col_right:
     '''
     st.components.v1.html(svg_code, height=370)
 
-    # Bauteil- und Mengenübersicht
+    # Bauteil- und Mengenübersicht (jetzt dynamisch aus st.session_state.bauteile)
     st.markdown("### Bauteil- und Mengenübersicht (Industrie-Standard)")
-    info_data = pd.DataFrame(
-        [["2030x1250", 2030, 1250, 1, 0, 1, 0]],
-        columns=["Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "bisher geschnitten", "auf diesem Plan", "Rest Menge"]
-    ) if st.session_state.bauteile else pd.DataFrame(columns=[
-        "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "bisher geschnitten", "auf diesem Plan", "Rest Menge"
-    ])
+    
+    if st.session_state.bauteile:
+        info_rows = []
+        for item in st.session_state.bauteile:
+            gesamt = item["Anz."]
+            info_rows.append([
+                item["Position"],
+                int(item["Länge (mm)"]),
+                int(item["Höhe (mm)"]),
+                gesamt,
+                0,  # bisher geschnitten
+                gesamt,  # auf diesem Plan
+                0   # Rest Menge
+            ])
+        info_data = pd.DataFrame(info_rows, columns=[
+            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", 
+            "bisher geschnitten", "auf diesem Plan", "Rest Menge"
+        ])
+    else:
+        info_data = pd.DataFrame(columns=[
+            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", 
+            "bisher geschnitten", "auf diesem Plan", "Rest Menge"
+        ])
+
     st.dataframe(info_data, use_container_width=True, hide_index=True)
