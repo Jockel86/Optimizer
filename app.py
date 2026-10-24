@@ -180,8 +180,11 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
             pdf.set_draw_color(44, 62, 80)
             pdf.rect(rx, ry, rw, rh, 'DF')
             
-            if rw > 15 and rh > 8:
-                pdf.set_font('helvetica', 'B', 8)
+            if rw > 10 and rh > 6:
+                pdf_font_size = 8
+                if rw < 25 or rh < 12:
+                    pdf_font_size = 6
+                pdf.set_font('helvetica', 'B', pdf_font_size)
                 pdf.set_text_color(255, 255, 255)
                 pdf.set_xy(rx, ry + (rh / 2) - 3)
                 pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
@@ -636,10 +639,20 @@ with col_right:
             rw = p["w"] * scale
             rh = p["h"] * scale
             
+            # Adaptive Schriftgröße für saubere Darstellung ohne Überlappungen
+            font_size = 11
+            if rw < 60 or rh < 25:
+                font_size = 8
+            if rw < 40 or rh < 18:
+                font_size = 6
+
             rects_svg += f'''
                 <rect x="{rx}" y="{ry}" width="{rw}" height="{rh}" fill="{color}" opacity="0.9" stroke="#2c3e50" stroke-width="1.5"/>
-                <text x="{rx + rw/2}" y="{ry + rh/2}" fill="white" font-family="Segoe UI" font-size="11" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(p["w"])} x {int(p["h"])}</text>
             '''
+            if rw > 10 and rh > 6:
+                rects_svg += f'''
+                    <text x="{rx + rw/2}" y="{ry + rh/2}" fill="white" font-family="Segoe UI" font-size="{font_size}" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(p["w"])} x {int(p["h"])}</text>
+                '''
         
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
