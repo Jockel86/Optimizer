@@ -19,14 +19,14 @@ if "optimized_layouts" not in st.session_state:
 
 # Initialisierung der Eingabefelder im Session State für die Dropdown-Synchronisation
 if "roh_l_input" not in st.session_state:
-    st.session_state.roh_l_input = 6180.0
+    st.session_state.roh_l_input = 6180
 if "roh_h_input" not in st.session_state:
-    st.session_state.roh_h_input = 2560.0
+    st.session_state.roh_h_input = 2560
 
 if "teil_l_input" not in st.session_state:
-    st.session_state.teil_l_input = 2030.0
+    st.session_state.teil_l_input = 2030
 if "teil_h_input" not in st.session_state:
-    st.session_state.teil_h_input = 1250.0
+    st.session_state.teil_h_input = 1250
 
 standard_teile = {
     "2030x1250": (2030, 1250),
@@ -35,21 +35,21 @@ standard_teile = {
     "3050x1020": (3050, 1020)
 }
 
-# Callbacks zur automatischen Anpassung der Maße bei Dropdown-Auswahl mit direktem Rerun
+# Callbacks zur automatischen Anpassung der Maße bei Dropdown-Auswahl
 def update_roh_dims():
     val = st.session_state.get("sel_roh_preset")
     if val and "x" in val:
         l_str, h_str = val.split("x")
-        st.session_state.roh_l_input = float(l_str)
-        st.session_state.roh_h_input = float(h_str)
+        st.session_state.roh_l_input = int(l_str)
+        st.session_state.roh_h_input = int(h_str)
         st.rerun()
 
 def update_teil_dims():
     val = st.session_state.get("sel_teil_preset")
     if val in standard_teile:
         b, h = standard_teile[val]
-        st.session_state.teil_l_input = float(b)
-        st.session_state.teil_h_input = float(h)
+        st.session_state.teil_l_input = int(b)
+        st.session_state.teil_h_input = int(h)
         st.rerun()
 
 col_left, col_right = st.columns([5, 7], gap="medium")
@@ -69,7 +69,7 @@ with col_left:
         with c1:
             schnittfuge = st.selectbox("Schnittfuge (mm):", ["4", "4.5", "5", "6", "6.5"], index=3, key="sel_schnittfuge")
         with c2:
-            max_saege_hoehe = st.number_input("Max. Säge-Höhe:", value=100, key="num_saegehoehe")
+            max_saege_hoehe = st.number_input("Max. Säge-Höhe:", value=100, format="%d", key="num_saegehoehe")
         
         drehbar = st.checkbox("Bauteile drehbar (90°)", value=True, key="chk_drehbar")
         
@@ -87,7 +87,7 @@ with col_left:
             besaeum_aktiv = st.checkbox("Besäumung aktivieren", key="chk_besaeum")
             bc1, bc2, bc3 = st.columns([2, 1, 1])
             with bc1:
-                besaeum_mass = st.number_input("Maß pro Kante (mm):", value=10, key="num_besaeum")
+                besaeum_mass = st.number_input("Maß pro Kante (mm):", value=10, format="%d", key="num_besaeum")
             with bc2:
                 st.write("")
                 besaeum_laenge = st.checkbox("Längskanten", value=True, key="chk_b_laenge")
@@ -99,9 +99,9 @@ with col_left:
             freischnitt_aktiv = st.checkbox("Spannungsfreischnitt aktivieren", key="chk_freischnitt")
             fc1, fc2 = st.columns(2)
             with fc1:
-                freischnitt_breite = st.number_input("Breite (mm):", value=15, key="num_f_breite")
+                freischnitt_breite = st.number_input("Breite (mm):", value=15, format="%d", key="num_f_breite")
             with fc2:
-                freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, key="num_f_anzahl")
+                freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, format="%d", key="num_f_anzahl")
             freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True, key="radio_f_kante")
 
     # 3. Verfügbare Pressplatten (Rohmaterial)
@@ -109,19 +109,19 @@ with col_left:
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Spaltenbreite für das Dropdown vergrößert ([3.2]), damit der Text vollständig sichtbar ist
-        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([3.2, 1.5, 1.5, 1.5, 1, 0.8])
+        # Optimierte Spaltenbreiten für eine saubere, vollständige Darstellung ohne Abschneiden
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.6, 1.8, 1.8, 1.5, 1.2, 0.9])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
         with rc2:
-            roh_l = st.number_input("L", key="roh_l_input", label_visibility="collapsed")
+            roh_l = st.number_input("L", format="%d", key="roh_l_input", label_visibility="collapsed")
         with rc3:
-            roh_h = st.number_input("H", key="roh_h_input", label_visibility="collapsed")
+            roh_h = st.number_input("H", format="%d", key="roh_h_input", label_visibility="collapsed")
         with rc4:
             roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed", key="sel_roh_st")
         with rc5:
-            roh_anz = st.number_input("Anz", value=1, min_value=1, key="roh_anz_input", label_visibility="collapsed")
+            roh_anz = st.number_input("Anz", value=1, min_value=1, format="%d", key="roh_anz_input", label_visibility="collapsed")
         with rc6:
             if st.button("➕", key="add_roh", use_container_width=True):
                 bez = f"Pressplatte_{int(st.session_state.roh_l_input)}x{int(st.session_state.roh_h_input)}"
@@ -143,19 +143,18 @@ with col_left:
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
-        # Spaltenbreite für das Dropdown ebenfalls vergrößert ([3.2])
-        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([3.2, 1.5, 1.5, 1.2, 1, 1.5])
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.6, 1.8, 1.8, 1.5, 1.2, 0.9])
         with tc1:
             sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset", on_change=update_teil_dims)
 
         with tc2:
-            teil_l = st.number_input("L", key="teil_l_input", label_visibility="collapsed")
+            teil_l = st.number_input("L", format="%d", key="teil_l_input", label_visibility="collapsed")
         with tc3:
-            teil_h = st.number_input("H", key="teil_h_input", label_visibility="collapsed")
+            teil_h = st.number_input("H", format="%d", key="teil_h_input", label_visibility="collapsed")
         with tc4:
-            teil_st = st.number_input("St", value=15, key="teil_st_input", label_visibility="collapsed")
+            teil_st = st.number_input("St", value=15, format="%d", key="teil_st_input", label_visibility="collapsed")
         with tc5:
-            teil_anz = st.number_input("Anz", value=3, min_value=1, key="teil_anz_input", label_visibility="collapsed")
+            teil_anz = st.number_input("Anz", value=3, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
         with tc6:
             if st.button("➕", key="add_teil", use_container_width=True):
                 name = f"{int(st.session_state.teil_l_input)}x{int(st.session_state.teil_h_input)}"
