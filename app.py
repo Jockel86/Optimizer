@@ -72,7 +72,7 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion mit integrierter grafischer Vorschau, Besäumung und Reststücken (inkl. Schraffur-Info)
+# PDF-Generierungsfunktion mit integrierter grafischer Vorschau, Besäumung und Reststücken
 def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     pdf.add_page()
@@ -141,7 +141,6 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
-                    # Schraffiert / Klein schneiden markieren
                     pdf.set_fill_color(203, 213, 225)
                     pdf.set_draw_color(100, 116, 139)
                     pdf.rect(ox, oy, ow, oh, 'DF')
@@ -319,7 +318,7 @@ with col_left:
         with tc4:
             teil_st = st.number_input("St", format="%d", key="teil_st_input", label_visibility="collapsed")
         with tc5:
-            teil_anz = st.number_input("Anz", value=4, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
+            teil_anz = st.number_input("Anz", value=1, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
         with tc6:
             st.markdown('<div class="add-btn-col">', unsafe_allow_html=True)
             if st.button("➕ Hinzufügen", key="add_teil", use_container_width=True, type="secondary"):
@@ -376,82 +375,93 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
+                # Verbessertes Greedy Shelf Packing (nutzt restliche Zeilenbreite voll aus)
                 def try_pack(items_to_pack):
-                    item_counts = defaultdict(int)
-                    item_dims = {}
-                    for item in items_to_pack:
-                        key = (item["w"], item["h"], item["name"])
-                        item_counts[key] += 1
-                        item_dims[key] = (item["w"], item["h"], item["name"])
-                    
-                    sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
+                    items = sorted(items_to_pack, key=lambda x: (x["h"], x["w"]), reverse=True)
                     placed_items = []
                     offcuts = []
+                    
                     cur_y = m_t
                     max_plate_w = default_plate_w - m_r
                     max_plate_h = default_plate_h - m_b
                     
-                    rows_info = []
+                    remaining_items = list(items)
                     
-                    for key in sorted_keys:
-                        w, h, name = item_dims[key]
-                        remaining_count = item_counts[key]
+                    while remaining_items and cur_y < max_plate_h:
+                        row_item = remaining_items.pop(0)
+                        row_h = row_item["h"]
                         
-                        while remaining_count > 0:
-                            cur_x = m_l
-                            row_items = []
+                        if cur_y + row_h > max_plate_h:
+                            break
                             
-                            while remaining_count > 0:
-                                needed_w = w if not row_items else (w + saege)
-                                if cur_x + needed_w <= max_plate_w:
-                                    if row_items:
-                                        cur_x += saege
-                                    row_items.append((cur_x, cur_y, w, h, name))
-                                    cur_x += w
-                                    remaining_count -= 1
-                                else:
-                                    break
+                        cur_x = m_l
+                        row_placed = [row_item]
+                        cur_x += row_item["w"]
+                        
+                        # Gierig weitere passende Bauteile in dieselbe Zeile packen
+                        i = 0
+                        while i < len(remaining_items):
+                            item = remaining_items[i]
+                            needed_w = item["w"] + saege
+                            if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
+                                cur_x += saege
+                                item_x = cur_x
+                                item_y = cur_y
+                                row_placed.append({**item, "x": item_x, "y": item_y})
+                                cur_x += item["w"]
+                                remaining_items.pop(i)
+                            else:
+                                i += 1
+                        
+                        # Koordinaten für die platzierten Teile der Zeile zuweisen
+                        for idx, it in enumerate(row_placed):
+                            if idx == 0:
+                                rx = m_l
+                            else:
+                                rx = row_placed[idx-1]["x"] + row_placed[idx-1]["w"] + saege
+                            ry = cur_y
+                            placed_items.append({
+                                "x": rx,
+                                "y": ry,
+                                "w": it["w"],
+                                "h": it["h"],
+                                "name": it["name"]
+                            })
                             
-                            if not row_items:
-                                break
-                                
-                            row_end_x = row_items[-1][0] + row_items[-1][2]
-                            rows_info.append({"y": cur_y, "h": h, "end_x": row_end_x})
+                        row_end_x = placed_items[-1]["x"] + placed_items[-1]["w"]
+                        
+                        # Rechtes Reststück prüfen
+                        right_offcut_w = max_plate_w - row_end_x
+                        if right_offcut_w > 20:
+                            to_scrap = (right_offcut_w < 600 and row_h < 2000) or (row_h < 600 and right_offcut_w < 2000)
+                            offcuts.append({
+                                "x": row_end_x,
+                                "y": cur_y,
+                                "w": right_offcut_w,
+                                "h": row_h,
+                                "to_scrap": to_scrap
+                            })
                             
-                            # Rechtes Reststück prüfen
-                            right_offcut_w = max_plate_w - row_end_x
-                            if right_offcut_w > 20:
-                                # Bedingung: Breite < 600 UND Länge < 2000 -> Klein schneiden / Verwerfen
-                                to_scrap = (right_offcut_w < 600 and h < 2000) or (h < 600 and right_offcut_w < 2000)
-                                offcuts.append({
-                                    "x": row_end_x,
-                                    "y": cur_y,
-                                    "w": right_offcut_w,
-                                    "h": h,
-                                    "to_scrap": to_scrap
-                                })
-                            
-                            for rx, ry, rw, rh, rname in row_items:
-                                placed_items.append({
-                                    "x": rx, "y": ry, "w": rw, "h": rh, "name": rname
-                                })
-                            
-                            cur_y += h + saege
-                    
+                        cur_y += row_h + saege
+                        
                     # Unteres Reststück prüfen
-                    used_bottom = cur_y - saege if rows_info else m_t
-                    bottom_offcut_h = max_plate_h - used_bottom
-                    if bottom_offcut_h > 20:
-                        offcut_w = max_plate_w - m_l
-                        to_scrap = (offcut_w < 600 and bottom_offcut_h < 2000) or (bottom_offcut_h < 600 and offcut_w < 2000)
-                        offcuts.append({
-                            "x": m_l,
-                            "y": used_bottom,
-                            "w": offcut_w,
-                            "h": bottom_offcut_h,
-                            "to_scrap": to_scrap
-                        })
-
+                    if placed_items:
+                        max_used_y = max(p["y"] + p["h"] for p in placed_items)
+                        bottom_offcut_h = max_plate_h - max_used_y
+                        if bottom_offcut_h > 20:
+                            offcut_w = max_plate_w - m_l
+                            to_scrap = (offcut_w < 600 and bottom_offcut_h < 2000) or (bottom_offcut_h < 600 and offcut_w < 2000)
+                            offcuts.append({
+                                "x": m_l,
+                                "y": max_used_y,
+                                "w": offcut_w,
+                                "h": bottom_offcut_h,
+                                "to_scrap": to_scrap
+                            })
+                            
+                    if remaining_items:
+                        return None, None
+                        
                     return placed_items, offcuts
 
                 layouts = []
@@ -462,7 +472,6 @@ with col_left:
                     for _ in range(int(t["Anz."])):
                         items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
                 
-                items_normal.sort(key=lambda x: x["h"], reverse=True)
                 res_normal, off_normal = try_pack(items_normal)
                 if res_normal:
                     layouts.append({
@@ -485,7 +494,6 @@ with col_left:
                             items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
                     
                     if valid_rotation:
-                        items_rotated.sort(key=lambda x: x["h"], reverse=True)
                         res_rotated, off_rotated = try_pack(items_rotated)
                         if res_rotated:
                             layouts.append({
@@ -568,14 +576,12 @@ with col_right:
         
         rects_svg = f'''
         <defs>
-            <!-- Schraffur-Muster für Reststücke unter 600x2000 mm (zum Klein schneiden) -->
             <pattern id="scrap_hatch" width="12" height="12" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
                 <line x1="0" y1="0" x2="0" y2="12" stroke="#94a3b8" stroke-width="2.5" />
             </pattern>
         </defs>
         '''
         
-        # Besäumungs-Rahmen in SVG zeichnen, wenn aktiv
         if st.session_state.get("chk_besaeum", False):
             bv_l = st.session_state.get("num_b_l_vorn", 10) * scale
             bv_r = st.session_state.get("num_b_l_hinten", 10) * scale
@@ -590,7 +596,6 @@ with col_right:
                 <rect x="{bx}" y="{by}" width="{bw}" height="{bh}" fill="none" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="6"/>
             '''
 
-        # Reststücke in SVG zeichnen, wenn Checkbox aktiv ist
         if rest_chk and "offcuts" in layout:
             for o in layout["offcuts"]:
                 ox = start_x + o["x"] * scale
@@ -599,13 +604,11 @@ with col_right:
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
-                    # Schraffierte Darstellung für Klein-schneiden-Reste
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
                         <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#b91c1c" font-family="Segoe UI" font-size="9" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Klein schneiden: {int(o["w"])} x {int(o["h"])}</text>
                     '''
                 else:
-                    # Normales einlagerbares Reststück
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
                         <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Rest: {int(o["w"])} x {int(o["h"])}</text>
