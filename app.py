@@ -9,13 +9,48 @@ st.set_page_config(
     layout="wide"
 )
 
-# Session State Initialisierung
+# Session State Initialisierung für Standardwerte & Tabellen
 if "rohplatten" not in st.session_state:
     st.session_state.rohplatten = []
 if "bauteile" not in st.session_state:
     st.session_state.bauteile = []
 if "optimized_layouts" not in st.session_state:
     st.session_state.optimized_layouts = []
+
+# Initialisierung der Eingabefelder im Session State für die Dropdown-Synchronisation
+if "roh_l_input" not in st.session_state:
+    st.session_state.roh_l_input = 6180.0
+if "roh_h_input" not in st.session_state:
+    st.session_state.roh_h_input = 2560.0
+
+if "teil_l_input" not in st.session_state:
+    st.session_state.teil_l_input = 2030.0
+if "teil_h_input" not in st.session_state:
+    st.session_state.teil_h_input = 1250.0
+
+standard_teile = {
+    "2030x1250": (2030, 1250),
+    "3050x1250": (3050, 1250),
+    "2050x1020": (2050, 1020), 
+    "3050x1020": (3050, 1020)
+}
+
+# Callbacks zur automatischen Anpassung der Maße bei Dropdown-Auswahl mit direktem Rerun
+def update_roh_dims():
+    val = st.session_state.get("sel_roh_preset")
+    if val and "x" in val:
+        l_str, h_str = val.split("x")
+        st.session_state.roh_l_input = float(l_str)
+        st.session_state.roh_h_input = float(h_str)
+        st.rerun()
+
+def update_teil_dims():
+    val = st.session_state.get("sel_teil_preset")
+    if val in standard_teile:
+        b, h = standard_teile[val]
+        st.session_state.teil_l_input = float(b)
+        st.session_state.teil_h_input = float(h)
+        st.rerun()
 
 col_left, col_right = st.columns([5, 7], gap="medium")
 
@@ -74,28 +109,24 @@ with col_left:
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2, 1.5, 1.5, 1.5, 1, 0.8])
+        # Spaltenbreite für das Dropdown vergrößert ([3.2]), damit der Text vollständig sichtbar ist
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([3.2, 1.5, 1.5, 1.5, 1, 0.8])
         with rc1:
-            sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset")
-        
-        def_l, def_h = 6180, 2560
-        if sel_roh_preset and "x" in sel_roh_preset:
-            parts = sel_roh_preset.split("x")
-            def_l, def_h = float(parts[0]), float(parts[1])
+            sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
         with rc2:
-            roh_l = st.number_input("L", value=def_l, key="roh_l_input", label_visibility="collapsed")
+            roh_l = st.number_input("L", key="roh_l_input", label_visibility="collapsed")
         with rc3:
-            roh_h = st.number_input("H", value=def_h, key="roh_h_input", label_visibility="collapsed")
+            roh_h = st.number_input("H", key="roh_h_input", label_visibility="collapsed")
         with rc4:
             roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed", key="sel_roh_st")
         with rc5:
             roh_anz = st.number_input("Anz", value=1, min_value=1, key="roh_anz_input", label_visibility="collapsed")
         with rc6:
             if st.button("➕", key="add_roh", use_container_width=True):
-                bez = f"Pressplatte_{int(roh_l)}x{int(roh_h)}"
+                bez = f"Pressplatte_{int(st.session_state.roh_l_input)}x{int(st.session_state.roh_h_input)}"
                 st.session_state.rohplatten.append({
-                    "Bezeichnung": bez, "Länge (mm)": roh_l, "Höhe (mm)": roh_h, "Stärke": roh_staerke, "Stk.": roh_anz
+                    "Bezeichnung": bez, "Länge (mm)": st.session_state.roh_l_input, "Höhe (mm)": st.session_state.roh_h_input, "Stärke": roh_staerke, "Stk.": roh_anz
                 })
                 st.rerun()
 
@@ -112,30 +143,24 @@ with col_left:
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
-        standard_teile = {
-            "2030x1250": (2030, 1250),
-            "3050x1250": (3050, 1250),
-            "2050x1020": (2050, 1020), 
-            "3050x1020": (3050, 1020)
-        }
-        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2, 1.5, 1.5, 1.2, 1, 1.5])
+        # Spaltenbreite für das Dropdown ebenfalls vergrößert ([3.2])
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([3.2, 1.5, 1.5, 1.2, 1, 1.5])
         with tc1:
-            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset")
-        def_tl, def_th = standard_teile[sel_teil]
+            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset", on_change=update_teil_dims)
 
         with tc2:
-            teil_l = st.number_input("L", value=def_tl, key="teil_l_input", label_visibility="collapsed")
+            teil_l = st.number_input("L", key="teil_l_input", label_visibility="collapsed")
         with tc3:
-            teil_h = st.number_input("H", value=def_th, key="teil_h_input", label_visibility="collapsed")
+            teil_h = st.number_input("H", key="teil_h_input", label_visibility="collapsed")
         with tc4:
             teil_st = st.number_input("St", value=15, key="teil_st_input", label_visibility="collapsed")
         with tc5:
             teil_anz = st.number_input("Anz", value=3, min_value=1, key="teil_anz_input", label_visibility="collapsed")
         with tc6:
             if st.button("➕", key="add_teil", use_container_width=True):
-                name = f"{int(teil_l)}x{int(teil_h)}"
+                name = f"{int(st.session_state.teil_l_input)}x{int(st.session_state.teil_h_input)}"
                 st.session_state.bauteile.append({
-                    "Position": name, "Länge (mm)": teil_l, "Höhe (mm)": teil_h, "Stärke (mm)": teil_st, "Anz.": teil_anz
+                    "Position": name, "Länge (mm)": st.session_state.teil_l_input, "Höhe (mm)": st.session_state.teil_h_input, "Stärke (mm)": teil_st, "Anz.": teil_anz
                 })
                 st.rerun()
 
@@ -171,7 +196,6 @@ with col_left:
                 
                 saege = float(schnittfuge)
                 
-                # Bauteile nach Typ und Stückzahl aggregieren
                 item_counts = defaultdict(int)
                 item_dims = {}
                 for t in st.session_state.bauteile:
@@ -179,7 +203,6 @@ with col_left:
                     item_counts[key] += int(t["Anz."])
                     item_dims[key] = (t["Länge (mm)"], t["Höhe (mm)"], t["Position"])
                 
-                # Nach Höhe absteigend sortieren für saubere Reihenbildung
                 sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
                 
                 placed = []
@@ -229,7 +252,6 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # Obere Steuerungsleiste
     header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
     with header_c1:
         plan_options = [f"Schnittplan {i+1} [Platte {int(lay['plate_w'])}x{int(lay['plate_h'])}mm]" for i, lay in enumerate(st.session_state.optimized_layouts)] if st.session_state.optimized_layouts else ["Kein Schnittplan berechnet"]
@@ -242,7 +264,6 @@ with col_right:
         if st.button("Drucken / PDF Export", use_container_width=True, key="btn_pdf"):
             st.info("PDF-Export wird vorbereitet...")
 
-    # Dynamische SVG-Vorschau mit einheitlicher Farbe pro Position
     st.markdown("### Schnittplan-Vorschau")
     
     if st.session_state.optimized_layouts:
@@ -300,7 +321,6 @@ with col_right:
         
     st.components.v1.html(svg_code, height=370)
 
-    # Bauteil- und Mengenübersicht
     st.markdown("### Bauteil- und Mengenübersicht (Industrie-Standard)")
     
     if st.session_state.bauteile:
