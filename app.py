@@ -12,7 +12,6 @@ st.set_page_config(
 # Benutzerdefiniertes CSS für perfekte Button-Ausrichtung und Lesbarkeit
 st.markdown("""
 <style>
-    /* Exakte Ausrichtung der Hinzufügen-Buttons auf Höhe der Eingabefelder */
     .add-btn-col {
         padding-top: 28px;
     }
@@ -29,24 +28,24 @@ if "optimized_layouts" not in st.session_state:
 
 # Initialisierung der Eingabefelder im Session State für die Synchronisation
 if "roh_l_input" not in st.session_state:
-    st.session_state.roh_l_input = 6180
+    st.session_state.roh_l_input = 4140
 if "roh_h_input" not in st.session_state:
-    st.session_state.roh_h_input = 2560
+    st.session_state.roh_h_input = 2090
 if "sel_roh_st" not in st.session_state:
     st.session_state.sel_roh_st = 20
 
 if "teil_l_input" not in st.session_state:
-    st.session_state.teil_l_input = 2030
+    st.session_state.teil_l_input = 2050
 if "teil_h_input" not in st.session_state:
-    st.session_state.teil_h_input = 1250
+    st.session_state.teil_h_input = 1020
 if "teil_st_input" not in st.session_state:
     st.session_state.teil_st_input = 20
 
 standard_teile = {
+    "2050x1020": (2050, 1020),
+    "3050x1020": (3050, 1020),
     "2030x1250": (2030, 1250),
-    "3050x1250": (3050, 1250),
-    "2050x1020": (2050, 1020), 
-    "3050x1020": (3050, 1020)
+    "3050x1250": (3050, 1250)
 }
 
 # Callbacks zur automatischen Anpassung der Maße und Stärken
@@ -127,10 +126,9 @@ with col_left:
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Spaltenverhältnis angepasst: Letzte Spalte breit genug für den vollständigen Text
         rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.3, 1.3, 1.3, 1.3, 0.9, 2.4])
         with rc1:
-            sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
+            sel_roh_preset = st.selectbox("Pos", roh_formate, index=3, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
         with rc2:
             roh_l = st.number_input("L", format="%d", key="roh_l_input", label_visibility="collapsed")
@@ -174,7 +172,7 @@ with col_left:
         with tc4:
             teil_st = st.number_input("St", format="%d", key="teil_st_input", label_visibility="collapsed")
         with tc5:
-            teil_anz = st.number_input("Anz", value=3, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
+            teil_anz = st.number_input("Anz", value=4, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
         with tc6:
             st.markdown('<div class="add-btn-col">', unsafe_allow_html=True)
             if st.button("➕ Hinzufügen", key="add_teil", use_container_width=True, type="secondary"):
@@ -210,7 +208,7 @@ with col_left:
         with act2:
             if st.button("Optimieren", type="primary", use_container_width=True):
                 if not st.session_state.rohplatten:
-                    default_plate_w, default_plate_h = 6180, 2560
+                    default_plate_w, default_plate_h = 4140, 2090
                 else:
                     default_plate_w = st.session_state.rohplatten[0]["Länge (mm)"]
                     default_plate_h = st.session_state.rohplatten[0]["Höhe (mm)"]
@@ -227,7 +225,7 @@ with col_left:
                 sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
                 
                 placed = []
-                margin = 20.0
+                margin = 10.0  # Angepasst auf 10 mm Rand für perfekte Ausnutzung
                 cur_y = margin
                 max_plate_w = default_plate_w - margin
                 
@@ -294,7 +292,7 @@ with col_right:
         
         svg_w = 700
         svg_h = 350
-        scale = min((svg_w - 60) / pw, (svg_h - 60) / ph) if pw > 0 and ph > 0 else 1
+        scale = min((svg_w - 40) / pw, (svg_h - 40) / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
         draw_h = ph * scale
@@ -324,7 +322,7 @@ with col_right:
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="30" y="22" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Einheitliche Positionsfarben)</text>
+                <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Optimierte Reihen-Anordnung)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
                 {rects_svg}
             </svg>
