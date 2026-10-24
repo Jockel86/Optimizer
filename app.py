@@ -10,28 +10,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS für ein helles, professionelles Industrie-Design (passend zum Desktop-Look)
-st.markdown("""
-<style>
-    .main {
-        background-color: #f0f2f5;
-    }
-    .stApp {
-        background-color: #f0f2f5;
-    }
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 1.5rem;
-    }
-    div[data-testid="stExpander"] {
-        background-color: #ffffff;
-        border-radius: 6px;
-        border: 1px solid #dcdcdc;
-        margin-bottom: 8px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Session State Initialisierung für Tabellen
 if "rohplatten" not in st.session_state:
     st.session_state.rohplatten = []
@@ -184,7 +162,7 @@ with col_left:
                 st.success("Zuschnitt & Reststücke erfolgreich berechnet!")
 
 with col_right:
-    # Rechte Spalte: Obere Steuerungsleiste analog zur Desktop-Version
+    # Rechte Spalte: Obere Steuerungsleiste
     header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
     with header_c1:
         st.selectbox("Schnittplan:", ["Schnittplan 1 (1 Platte einzeln) [Ausnutzung: 19.65%]"], label_visibility="visible")
@@ -196,7 +174,7 @@ with col_right:
         if st.button("Drucken / PDF Export", use_container_width=True):
             st.info("PDF-Export wird vorbereitet...")
 
-    # Grafik-Vorschau (SVG im sauberen Container)
+    # Grafik-Vorschau
     st.markdown("### Schnittplan-Vorschau")
     svg_code = '''
     <div style="background-color: transparent; padding: 0px;">
@@ -210,7 +188,7 @@ with col_right:
     '''
     st.components.v1.html(svg_code, height=370)
 
-    # Bauteil- und Mengenübersicht (Industrie-Standard)
+    # Bauteil- und Mengenübersicht
     st.markdown("### Bauteil- und Mengenübersicht (Industrie-Standard)")
     info_data = pd.DataFrame(
         [["2030x1250", 2030, 1250, 1, 0, 1, 0]],
