@@ -85,7 +85,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
         pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
         pdf.ln(2)
         
-        # Kopfdaten / Metadaten (auf jeder Seite für vollständige Zuordnung)
+        # Kopfdaten / Metadaten
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 5, 'Auftrags- & Kopfdaten:', 0, 1)
         pdf.set_font('helvetica', '', 9)
@@ -231,15 +231,13 @@ with col_left:
         with c2:
             max_saege_hoehe = st.number_input("Max. Säge-Höhe:", value=100, format="%d", key="num_saegehoehe")
         
-        drehbar = st.checkbox("Bauteile drehbar (90°)", value=True, key="chk_drehbar")
-        
-        st.write("Aufteilung:")
+        st.write("Aufteilung / Strategie:")
         aufteilung = st.radio(
             "Aufteilung Modus", 
-            ["Kopfkanten / Kopfschnitte", "Längskanten / Längsschnitte", "Optimal"], 
+            ["Längsschnitte bevorzugen", "Kopfschnitte bevorzugen", "Optimal"], 
             index=2, 
             label_visibility="collapsed", 
-            horizontal=True,
+            horizontal=False,
             key="radio_aufteilung"
         )
 
@@ -356,7 +354,7 @@ with col_left:
                     default_plate_h = st.session_state.rohplatten[0]["Höhe (mm)"]
                 
                 saege = float(schnittfuge)
-                drehbar_aktiv = st.session_state.get("chk_drehbar", True)
+                strategie = st.session_state.get("radio_aufteilung", "Optimal")
                 
                 # Besäumungswerte auslesen
                 besaeum_aktiv = st.session_state.get("chk_besaeum", False)
@@ -371,7 +369,7 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Multi-Platten-Packer mit Variantentyp-Kennzeichnung
+                # Multi-Platten-Packer
                 def pack_all_items(items_to_pack, title_prefix, variant_type_key):
                     current_items = list(items_to_pack)
                     plate_idx = 1
@@ -497,26 +495,35 @@ with col_left:
 
                 layouts = []
 
-                # Alle Bauteile in eine Liste auflösen
+                # Bauteile in Listen aufteilen
                 items_normal = []
+                items_rotated = []
+                valid_rot = True
+
                 for t in st.session_state.bauteile:
                     for _ in range(int(t["Anz."])):
                         items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
-                
-                norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)", "Standard")
-                if norm_layouts:
-                    layouts.extend(norm_layouts)
+                    
+                    rw, rh = t["Höhe (mm)"], t["Länge (mm)"]
+                    if rw > max_w_row or rh > max_h_plate:
+                        valid_rot = False
+                    for _ in range(int(t["Anz."])):
+                        items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
 
-                # Gedrehte Variante (90°) prüfen
-                if drehbar_aktiv:
-                    items_rotated = []
-                    valid_rot = True
-                    for t in st.session_state.bauteile:
-                        rw, rh = t["Höhe (mm)"], t["Länge (mm)"]
-                        if rw > max_w_row or rh > max_h_plate:
-                            valid_rot = False
-                        for _ in range(int(t["Anz."])):
-                            items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
+                # Je nach Strategie berechnen
+                if strategie == "Längsschnitte bevorzugen":
+                    norm_layouts = pack_all_items(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
+                    if norm_layouts:
+                        layouts.extend(norm_layouts)
+                elif strategie == "Kopfschnitte bevorzugen":
+                    if valid_rot:
+                        rot_layouts = pack_all_items(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
+                        if rot_layouts:
+                            layouts.extend(rot_layouts)
+                else:  # "Optimal"
+                    norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)", "Standard")
+                    if norm_layouts:
+                        layouts.extend(norm_layouts)
                     if valid_rot:
                         rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
                         if rot_layouts:
@@ -530,7 +537,7 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # Optimierte Spaltenbreiten für volle Lesbarkeit im Dropdown
+    # Vergrößerte Dropdown-Spalte für vollständige Lesbarkeit
     header_c1, header_c2, header_c3, header_c4 = st.columns([6.0, 2.2, 1.2, 2.0])
     selected_index = 0
     with header_c1:
@@ -557,7 +564,6 @@ with col_right:
     with header_c4:
         st.write("")
         if st.session_state.optimized_layouts:
-            # Gesamter Auftrags-Schnittplan (alle verbleibenden Layouts) an den PDF-Report übergeben
             current_layouts_list = st.session_state.optimized_layouts
             
             besaeum_info = {
