@@ -531,11 +531,11 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
+    # Hier wurde die Spaltenbreite angepasst, damit das Dropdown-Menü mehr Platz hat ([5, 2, 2] statt [3, 2, 2])
+    header_c1, header_c2, header_c3 = st.columns([5, 2, 2])
     selected_index = 0
     with header_c1:
         if st.session_state.optimized_layouts:
-            # Dropdown mit integrierter Auslastung in Prozent erweitert
             plan_options = [f"{lay['title']} — Auslastung: {lay['utilization']}%" for lay in st.session_state.optimized_layouts]
             selected_plan_title = st.selectbox("Schnittplan-Variante wählen:", plan_options, label_visibility="visible", key="sel_plan_variant")
             selected_index = plan_options.index(selected_plan_title)
@@ -662,7 +662,7 @@ with col_right:
                 '''
         
         svg_code = f'''
-        <div style="background-color: transparent; padding: 0px;">
+        <div style="background-content: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
                 <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']} — Auslastung: {layout['utilization']}%)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
