@@ -141,12 +141,10 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
-                    # Nur schraffieren / grau füllen ohne Text
                     pdf.set_fill_color(203, 213, 225)
                     pdf.set_draw_color(100, 116, 139)
                     pdf.rect(ox, oy, ow, oh, 'DF')
                 else:
-                    # Gültiges Reststück mit Bemaßung
                     pdf.set_fill_color(226, 232, 240)
                     pdf.set_draw_color(148, 163, 184)
                     pdf.rect(ox, oy, ow, oh, 'DF')
@@ -371,7 +369,7 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Multi-Platten-Packer mit exakter Mindestmaßprüfung (Mind. 500 breit & Mind. 2000 lang)
+                # Multi-Platten-Packer mit Erfassung interner Zeilen-Restflächen und Mindestmaßprüfung
                 def pack_all_items(items_to_pack, title_prefix):
                     current_items = list(items_to_pack)
                     plate_idx = 1
@@ -427,20 +425,33 @@ with col_left:
                                 else:
                                     i += 1
                                     
+                            # Interne Restflächen unter kürzeren Teilen in derselben Zeile prüfen
+                            for rit in row_items:
+                                if rit["h"] < row_h:
+                                    sub_w = rit["w"]
+                                    sub_h = row_h - rit["h"]
+                                    if sub_w > 20 and sub_h > 20:
+                                        is_valid_rest = (sub_w >= 500 and sub_h >= 2000) or (sub_h >= 500 and sub_w >= 2000)
+                                        offcuts.append({
+                                            "x": rit["x"],
+                                            "y": rit["y"] + rit["h"],
+                                            "w": sub_w,
+                                            "h": sub_h,
+                                            "to_scrap": not is_valid_rest
+                                        })
+
                             plate_placed.extend(row_items)
                             
                             row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
                             right_offcut_w = max_plate_w - row_end_x
                             if right_offcut_w > 20:
-                                # Reststück gültig, wenn min. 500 breit UND min. 2000 lang (in beliebiger Ausrichtung)
                                 is_valid_rest = (right_offcut_w >= 500 and row_h >= 2000) or (row_h >= 500 and right_offcut_w >= 2000)
-                                to_scrap = not is_valid_rest
                                 offcuts.append({
                                     "x": row_end_x,
                                     "y": cur_y,
                                     "w": right_offcut_w,
                                     "h": row_h,
-                                    "to_scrap": to_scrap
+                                    "to_scrap": not is_valid_rest
                                 })
                                 
                             cur_y += row_h + saege
@@ -453,13 +464,12 @@ with col_left:
                             if bottom_offcut_h > 20:
                                 offcut_w = max_plate_w - m_l
                                 is_valid_rest = (offcut_w >= 500 and bottom_offcut_h >= 2000) or (bottom_offcut_h >= 500 and offcut_w >= 2000)
-                                to_scrap = not is_valid_rest
                                 offcuts.append({
                                     "x": m_l,
                                     "y": max_used_y,
                                     "w": offcut_w,
                                     "h": bottom_offcut_h,
-                                    "to_scrap": to_scrap
+                                    "to_scrap": not is_valid_rest
                                 })
                             
                             generated_layouts.append({
@@ -603,12 +613,10 @@ with col_right:
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
-                    # Nur schraffiert ohne Text für Schrott-Reste unter Mindestmaß
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
                     '''
                 else:
-                    # Gültiges Reststück mit Bemaßung
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
                         <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(o["w"])} x {int(o["h"])}</text>
