@@ -72,7 +72,7 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion mit integrierter grafischer Vorschau, Besäumung und Reststücken
+# PDF-Generierungsfunktion mit integrierter grafischer Vorschau, Besäumung und Reststücken (inkl. Schraffur-Info)
 def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     pdf.add_page()
@@ -139,15 +139,28 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
                 oy = start_y + o["y"] * scale
                 ow = o["w"] * scale
                 oh = o["h"] * scale
-                pdf.set_fill_color(226, 232, 240)
-                pdf.set_draw_color(148, 163, 184)
-                pdf.rect(ox, oy, ow, oh, 'DF')
-                if ow > 15 and oh > 8:
-                    pdf.set_font('helvetica', '', 7)
-                    pdf.set_text_color(100, 116, 139)
-                    pdf.set_xy(ox, oy + (oh / 2) - 3)
-                    pdf.cell(ow, 6, f'Rest: {int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
-                    pdf.set_text_color(0, 0, 0)
+                
+                if o["to_scrap"]:
+                    # Schraffiert / Klein schneiden markieren
+                    pdf.set_fill_color(203, 213, 225)
+                    pdf.set_draw_color(100, 116, 139)
+                    pdf.rect(ox, oy, ow, oh, 'DF')
+                    if ow > 15 and oh > 8:
+                        pdf.set_font('helvetica', 'B', 6)
+                        pdf.set_text_color(185, 28, 28)
+                        pdf.set_xy(ox, oy + (oh / 2) - 3)
+                        pdf.cell(ow, 6, f'Klein schneiden: {int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
+                        pdf.set_text_color(0, 0, 0)
+                else:
+                    pdf.set_fill_color(226, 232, 240)
+                    pdf.set_draw_color(148, 163, 184)
+                    pdf.rect(ox, oy, ow, oh, 'DF')
+                    if ow > 15 and oh > 8:
+                        pdf.set_font('helvetica', '', 7)
+                        pdf.set_text_color(100, 116, 139)
+                        pdf.set_xy(ox, oy + (oh / 2) - 3)
+                        pdf.cell(ow, 6, f'Rest: {int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
+                        pdf.set_text_color(0, 0, 0)
 
         colors_rgb = [
             (52, 152, 219),
@@ -358,7 +371,7 @@ with col_left:
                     m_t = float(st.session_state.get("num_b_k_vorn", 10))
                     m_b = float(st.session_state.get("num_b_k_hinten", 10))
                 else:
-                    m_l, m_r, m_t, m_b = 5.0, 5.0, 5.0, 5.0 # Minimaler Sicherheitsrand
+                    m_l, m_r, m_t, m_b = 5.0, 5.0, 5.0, 5.0
 
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
@@ -405,14 +418,17 @@ with col_left:
                             row_end_x = row_items[-1][0] + row_items[-1][2]
                             rows_info.append({"y": cur_y, "h": h, "end_x": row_end_x})
                             
-                            # Rechtes Reststück
+                            # Rechtes Reststück prüfen
                             right_offcut_w = max_plate_w - row_end_x
                             if right_offcut_w > 20:
+                                # Bedingung: Breite < 600 UND Länge < 2000 -> Klein schneiden / Verwerfen
+                                to_scrap = (right_offcut_w < 600 and h < 2000) or (h < 600 and right_offcut_w < 2000)
                                 offcuts.append({
                                     "x": row_end_x,
                                     "y": cur_y,
                                     "w": right_offcut_w,
-                                    "h": h
+                                    "h": h,
+                                    "to_scrap": to_scrap
                                 })
                             
                             for rx, ry, rw, rh, rname in row_items:
@@ -422,15 +438,18 @@ with col_left:
                             
                             cur_y += h + saege
                     
-                    # Unteres Reststück
+                    # Unteres Reststück prüfen
                     used_bottom = cur_y - saege if rows_info else m_t
                     bottom_offcut_h = max_plate_h - used_bottom
                     if bottom_offcut_h > 20:
+                        offcut_w = max_plate_w - m_l
+                        to_scrap = (offcut_w < 600 and bottom_offcut_h < 2000) or (bottom_offcut_h < 600 and offcut_w < 2000)
                         offcuts.append({
                             "x": m_l,
                             "y": used_bottom,
-                            "w": max_plate_w - m_l,
-                            "h": bottom_offcut_h
+                            "w": offcut_w,
+                            "h": bottom_offcut_h,
+                            "to_scrap": to_scrap
                         })
 
                     return placed_items, offcuts
@@ -547,7 +566,14 @@ with col_right:
         start_x = (svg_w - draw_w) / 2
         start_y = (svg_h - draw_h) / 2
         
-        rects_svg = ""
+        rects_svg = f'''
+        <defs>
+            <!-- Schraffur-Muster für Reststücke unter 600x2000 mm (zum Klein schneiden) -->
+            <pattern id="scrap_hatch" width="12" height="12" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+                <line x1="0" y1="0" x2="0" y2="12" stroke="#94a3b8" stroke-width="2.5" />
+            </pattern>
+        </defs>
+        '''
         
         # Besäumungs-Rahmen in SVG zeichnen, wenn aktiv
         if st.session_state.get("chk_besaeum", False):
@@ -571,10 +597,19 @@ with col_right:
                 oy = start_y + o["y"] * scale
                 ow = o["w"] * scale
                 oh = o["h"] * scale
-                rects_svg += f'''
-                    <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
-                    <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Rest: {int(o["w"])} x {int(o["h"])}</text>
-                '''
+                
+                if o["to_scrap"]:
+                    # Schraffierte Darstellung für Klein-schneiden-Reste
+                    rects_svg += f'''
+                        <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
+                        <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#b91c1c" font-family="Segoe UI" font-size="9" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Klein schneiden: {int(o["w"])} x {int(o["h"])}</text>
+                    '''
+                else:
+                    # Normales einlagerbares Reststück
+                    rects_svg += f'''
+                        <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
+                        <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Rest: {int(o["w"])} x {int(o["h"])}</text>
+                    '''
 
         colors = ["#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#d35400"]
         name_to_color = {}
