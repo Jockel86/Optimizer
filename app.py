@@ -367,87 +367,100 @@ with col_left:
                 if oversized:
                     st.error("Fehler: Mindestens ein Bauteil ist größer als die verfügbare Pressplatte (inkl. Besäumung/Randabzug)!")
                 else:
-                    # Echter industrieller Guillotine-Streifen-Packer (Schnitt durchgehend von Kante zu Kante)
-                    def pack_guillotine(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
+                    # Leistungsstarker Guillotine Free-Rectangles Packer (nutzt verbleibende Pockets rekursiv voll aus)
+                    def pack_guillotine_maxrects(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
                         max_w = plate_w - m_r
                         max_h = plate_h - m_b
+                        
+                        free_rects = [{
+                            "x": m_l,
+                            "y": m_t,
+                            "w": max_w - m_l,
+                            "h": max_h - m_t
+                        }]
                         
                         placed = []
                         unplaced = []
                         
-                        # Sortieren nach Höhe absteigend für saubere Streifenbildung
-                        remaining = sorted(items, key=lambda x: (x["h"], x["w"]), reverse=True)
+                        # Größere Teile zuerst platzieren (z.B. große Platte 1020x2050), danach die kleinen Teile in die Pockets
+                        sorted_items = sorted(items, key=lambda x: x["w"] * x["h"], reverse=True)
                         
-                        cur_y = m_t
-                        plate_total_area = plate_w * plate_h
-                        
-                        while remaining and cur_y < max_h:
-                            # Finde die maximale Höhe für diesen Streifen basierend auf dem ersten Teil
-                            strip_item = remaining[0]
-                            strip_h = strip_item["h"]
+                        for item in sorted_items:
+                            iw = item["w"]
+                            ih = item["h"]
                             
-                            if cur_y + strip_h > max_h:
-                                unplaced.extend(remaining)
-                                break
-                                
-                            # Alle Teile finden, die in diesen horizontalen Streifen passen
-                            strip_parts = []
-                            i = 0
-                            while i < len(remaining):
-                                item = remaining[i]
-                                if item["h"] <= strip_h:
-                                    strip_parts.append(item)
-                                    remaining.pop(i)
-                                else:
-                                    i += 1
-                                    
-                            # Im Streifen von links nach rechts platzieren (durchgehender Schnitt entlang der X-Achse)
-                            cur_x = m_l
-                            row_placed = []
-                            for p in strip_parts:
-                                if cur_x + p["w"] <= max_w:
-                                    row_placed.append({
-                                        "x": cur_x,
-                                        "y": cur_y,
-                                        "w": p["w"],
-                                        "h": p["h"],
-                                        "name": p["name"]
-                                    })
-                                    cur_x += p["w"] + saege
-                                else:
-                                    unplaced.append(p)
-                                    
-                            if row_placed:
-                                placed.extend(row_placed)
-                                cur_y += strip_h + saege
-                            else:
-                                break
-                                
-                        unplaced.extend(remaining)
-                        
-                        # Reststücke ermitteln (Rechteck unten und rechts)
-                        offcuts = []
-                        if placed:
-                            max_used_x = max(p["x"] + p["w"] for p in placed)
-                            max_used_y = max(p["y"] + p["h"] for p in placed)
+                            best_rect_idx = -1
+                            best_score = float('inf')
                             
-                            # Rest rechts neben den Streifen
-                            if max_w - max_used_x > 50:
-                                offcuts.append({
-                                    "x": max_used_x,
-                                    "y": m_t,
-                                    "w": max_w - max_used_x,
-                                    "h": max_h - m_t,
-                                    "to_scrap": False
+                            for idx, rect in enumerate(free_rects):
+                                if rect["w"] >= iw and rect["h"] >= ih:
+                                    leftover_w = rect["w"] - iw
+                                    leftover_h = rect["h"] - ih
+                                    score = min(leftover_w, leftover_h)
+                                    if score < best_score:
+                                        best_score = score
+                                        best_rect_idx = idx
+                                        
+                            if best_rect_idx != -1:
+                                rect = free_rects.pop(best_rect_idx)
+                                
+                                placed.append({
+                                    "x": rect["x"],
+                                    "y": rect["y"],
+                                    "w": iw,
+                                    "h": ih,
+                                    "name": item["name"]
                                 })
-                            # Rest unten unter den Streifen
-                            if max_h - max_used_y > 50:
+                                
+                                # Guillotine-Split: Aufteilung in saubere Sägeschnitt-Restrechtecke (rechts und unten)
+                                new_rects = []
+                                if rect["w"] - iw - saege > 10:
+                                    new_rects.append({
+                                        "x": rect["x"] + iw + saege,
+                                        "y": rect["y"],
+                                        "w": rect["w"] - iw - saege,
+                                        "h": rect["h"]
+                                    })
+                                if rect["h"] - ih - saege > 10:
+                                    new_rects.append({
+                                        "x": rect["x"],
+                                        "y": rect["y"] + ih + saege,
+                                        "w": rect["w"],
+                                        "h": rect["h"] - ih - saege
+                                    })
+                                    
+                                for nr in new_rects:
+                                    if nr["w"] > 10 and nr["h"] > 10:
+                                        free_rects.append(nr)
+                                        
+                                # Redundante / überlappende Freiräume bereinigen
+                                optimized_rects = []
+                                for i, r1 in enumerate(free_rects):
+                                    contained = False
+                                    for j, r2 in enumerate(free_rects):
+                                        if i != j:
+                                            if (r2["x"] <= r1["x"] and r2["y"] <= r1["y"] and 
+                                                r2["x"] + r2["w"] >= r1["x"] + r1["w"] and 
+                                                r2["y"] + r2["h"] >= r1["y"] + r1["h"]):
+                                                contained = True
+                                                break
+                                    if not contained:
+                                        optimized_rects.append(r1)
+                                free_rects = optimized_rects
+                            else:
+                                unplaced.append(item)
+                                
+                        # Verbleibende tatsächliche Reststücke ermitteln
+                        offcuts = []
+                        for r in free_rects:
+                            if r["w"] > 50 and r["h"] > 50:
+                                is_valid_rest = (r["w"] >= 500 and r["h"] >= 2000) or (r["h"] >= 500 and r["w"] >= 2000)
                                 offcuts.append({
-                                    "x": m_l,
-                                    "y": max_used_y,
-                                    "w": max_w - m_l,
-                                    "h": max_h - max_used_y,
-                                    "to_scrap": False
+                                    "x": r["x"],
+                                    "y": r["y"],
+                                    "w": r["w"],
+                                    "h": r["h"],
+                                    "to_scrap": not is_valid_rest
                                 })
                                 
                         return placed, offcuts, unplaced
@@ -459,7 +472,7 @@ with col_left:
                         plate_total_area = default_plate_w * default_plate_h
                         
                         while current_items and plate_idx <= 20:
-                            placed, offcuts, unplaced = pack_guillotine(
+                            placed, offcuts, unplaced = pack_guillotine_maxrects(
                                 current_items, default_plate_w, default_plate_h, m_l, m_r, m_t, m_b, saege
                             )
                             
