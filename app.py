@@ -531,7 +531,6 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # Angepasste Spaltenaufteilung: Dropdown erhält den Großteil des Platzes, daneben der Button zum Fixieren
     header_c1, header_c2, header_c3, header_c4 = st.columns([4, 2.5, 1.5, 2])
     selected_index = 0
     with header_c1:
@@ -547,10 +546,10 @@ with col_right:
         if st.session_state.optimized_layouts:
             if st.button("📌 Nur diese behalten", use_container_width=True, key="btn_keep_variant"):
                 selected_layout = st.session_state.optimized_layouts[selected_index]
-                chosen_type = selected_layout["variant_type"]
-                # Nur Layouts des gewählten Typs behalten, die anderen verwerfen
+                # Sichere Abfrage mit Fallback, um KeyError zu verhindern
+                chosen_type = selected_layout.get("variant_type", "Standard")
                 st.session_state.optimized_layouts = [
-                    lay for lay in st.session_state.optimized_layouts if lay["variant_type"] == chosen_type
+                    lay for lay in st.session_state.optimized_layouts if lay.get("variant_type", "Standard") == chosen_type
                 ]
                 st.success("Variante fixiert – alternative Wege wurden verworfen!")
                 st.rerun()
