@@ -105,30 +105,26 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
         pw = layout["plate_w"]
         ph = layout["plate_h"]
         
-        # Verfügbarer Platz im PDF für die Zeichnung (Breite: 170 mm, Höhe: 75 mm)
         max_box_w = 170.0
         max_box_h = 75.0
         scale = min(max_box_w / pw, max_box_h / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
         draw_h = ph * scale
-        start_x = (210 - draw_w) / 2  # A4 Breite ist 210 mm, zentrieren
+        start_x = (210 - draw_w) / 2
         start_y = pdf.get_y()
         
-        # Außenrahmen der Pressplatte (Hintergrund hellgrau, Rahmen dunkel)
         pdf.set_fill_color(248, 249, 250)
         pdf.set_draw_color(127, 140, 141)
         pdf.rect(start_x, start_y, draw_w, draw_h, 'DF')
         
-        # Bauteile einzeichnen
-        # Feste Farbpalette für Bauteile im PDF (RGB)
         colors_rgb = [
-            (52, 152, 219),   # Blau
-            (46, 204, 113),   # Grün
-            (155, 89, 182),   # Lila
-            (243, 156, 18),   # Orange
-            (26, 188, 156),   # Türkis
-            (211, 84, 0)      # Dunkelorange
+            (52, 152, 219),
+            (46, 204, 113),
+            (155, 89, 182),
+            (243, 156, 18),
+            (26, 188, 156),
+            (211, 84, 0)
         ]
         name_to_color_idx = {}
         
@@ -147,14 +143,12 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
             pdf.set_draw_color(44, 62, 80)
             pdf.rect(rx, ry, rw, rh, 'DF')
             
-            # Textbeschriftung im Bauteil (nur wenn Platz genug ist)
             if rw > 15 and rh > 8:
                 pdf.set_font('helvetica', 'B', 8)
                 pdf.set_text_color(255, 255, 255)
-                # Text in der Mitte des Rechtecks platzieren
                 pdf.set_xy(rx, ry + (rh / 2) - 3)
                 pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
-                pdf.set_text_color(0, 0, 0) # Textfarbe zurücksetzen
+                pdf.set_text_color(0, 0, 0)
                 
         pdf.set_xy(start_x, start_y + draw_h + 6)
         pdf.ln(4)
@@ -231,12 +225,13 @@ with col_left:
                 freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, format="%d", key="num_f_anzahl")
             freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True, key="radio_f_kante")
 
-    # 3. Verfügbare Pressplatten (Rohmaterial)
+    # 3. Verfügbare Pressplatten (Rohmaterial) - Angepasste Spaltenbreiten für Stärke
     st.markdown("### 1. Verfügbare Pressplatten (Rohmaterial)")
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.3, 1.3, 1.3, 1.3, 0.9, 2.4])
+        # Spalte 4 (Stärke) wurde vergrößert ([1.8]), damit das Dropdown vollständig sichtbar ist
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.1, 1.2, 1.2, 1.8, 0.8, 2.5])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=3, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
 
@@ -271,7 +266,7 @@ with col_left:
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
-        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.3, 1.3, 1.3, 1.3, 0.9, 2.4])
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.1, 1.2, 1.2, 1.8, 0.8, 2.5])
         with tc1:
             sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset", on_change=update_teil_dims)
 
