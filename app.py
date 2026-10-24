@@ -372,8 +372,8 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Multi-Platten-Packer mit Flächenauslastungs-Berechnung
-                def pack_all_items(items_to_pack, title_prefix):
+                # Multi-Platten-Packer mit Variantentyp-Kennzeichnung
+                def pack_all_items(items_to_pack, title_prefix, variant_type_key):
                     current_items = list(items_to_pack)
                     plate_idx = 1
                     generated_layouts = []
@@ -477,12 +477,12 @@ with col_left:
                                     "to_scrap": not is_valid_rest
                                 })
                             
-                            # Auslastung in Prozent berechnen
                             placed_area = sum(p["w"] * p["h"] for p in plate_placed)
                             utilization = round((placed_area / plate_total_area) * 100, 1)
 
                             generated_layouts.append({
                                 "title": f"{title_prefix} - Platte {plate_idx}",
+                                "variant_type": variant_type_key,
                                 "utilization": utilization,
                                 "plate_w": default_plate_w,
                                 "plate_h": default_plate_h,
@@ -504,7 +504,7 @@ with col_left:
                     for _ in range(int(t["Anz."])):
                         items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
                 
-                norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)")
+                norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)", "Standard")
                 if norm_layouts:
                     layouts.extend(norm_layouts)
 
@@ -519,7 +519,7 @@ with col_left:
                         for _ in range(int(t["Anz."])):
                             items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
                     if valid_rot:
-                        rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)")
+                        rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
                         if rot_layouts:
                             layouts.extend(rot_layouts)
 
@@ -531,8 +531,8 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # Hier wurde die Spaltenbreite angepasst, damit das Dropdown-Menü mehr Platz hat ([5, 2, 2] statt [3, 2, 2])
-    header_c1, header_c2, header_c3 = st.columns([5, 2, 2])
+    # Angepasste Spaltenaufteilung: Dropdown erhält den Großteil des Platzes, daneben der Button zum Fixieren
+    header_c1, header_c2, header_c3, header_c4 = st.columns([4, 2.5, 1.5, 2])
     selected_index = 0
     with header_c1:
         if st.session_state.optimized_layouts:
@@ -544,8 +544,22 @@ with col_right:
             
     with header_c2:
         st.write("")
-        rest_chk = st.checkbox("Reststücke", value=True, key="chk_rest")
+        if st.session_state.optimized_layouts:
+            if st.button("📌 Nur diese behalten", use_container_width=True, key="btn_keep_variant"):
+                selected_layout = st.session_state.optimized_layouts[selected_index]
+                chosen_type = selected_layout["variant_type"]
+                # Nur Layouts des gewählten Typs behalten, die anderen verwerfen
+                st.session_state.optimized_layouts = [
+                    lay for lay in st.session_state.optimized_layouts if lay["variant_type"] == chosen_type
+                ]
+                st.success("Variante fixiert – alternative Wege wurden verworfen!")
+                st.rerun()
+
     with header_c3:
+        st.write("")
+        rest_chk = st.checkbox("Reststücke", value=True, key="chk_rest")
+
+    with header_c4:
         st.write("")
         if st.session_state.optimized_layouts:
             current_layout = st.session_state.optimized_layouts[selected_index]
@@ -662,7 +676,7 @@ with col_right:
                 '''
         
         svg_code = f'''
-        <div style="background-content: transparent; padding: 0px;">
+        <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
                 <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']} — Auslastung: {layout['utilization']}%)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
