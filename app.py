@@ -76,16 +76,13 @@ def update_teil_dims():
 def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     
-    # Für jeden Schnittplan eine eigene Seite generieren
     for idx, layout in enumerate(layouts):
         pdf.add_page()
         pdf.set_font('helvetica', 'B', 16)
         
-        # Titel
         pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
         pdf.ln(2)
         
-        # Kopfdaten / Metadaten
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 5, 'Auftrags- & Kopfdaten:', 0, 1)
         pdf.set_font('helvetica', '', 9)
@@ -100,7 +97,6 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
             pdf.cell(0, 5, f'Besäumung (V/H/K1/K2): {besaeum_info["l_vorn"]}/{besaeum_info["l_hinten"]}/{besaeum_info["k_vorn"]}/{besaeum_info["k_hinten"]} mm', 0, 1)
         pdf.ln(3)
         
-        # Grafische Vorschau im PDF zeichnen
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 6, 'Schnittplan-Vorschau:', 0, 1)
         
@@ -120,7 +116,6 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
         pdf.set_draw_color(127, 140, 141)
         pdf.rect(start_x, start_y, draw_w, draw_h, 'DF')
         
-        # Besäumungs-Rahmen im PDF (falls aktiv)
         if besaeum_info["aktiv"]:
             bx = start_x + besaeum_info["l_vorn"] * scale
             by = start_y + besaeum_info["k_vorn"] * scale
@@ -132,7 +127,6 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
             pdf.set_draw_color(127, 140, 141)
             pdf.set_line_width(0.2)
 
-        # Reststücke im PDF zeichnen, falls aktiviert
         if show_rest and "offcuts" in layout:
             for o in layout["offcuts"]:
                 ox = start_x + o["x"] * scale
@@ -191,7 +185,6 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
                 pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
                 pdf.set_text_color(0, 0, 0)
                 
-    # Abschließend eine gemeinsame Bauteil- und Mengenübersicht-Seite anhängen
     pdf.add_page()
     pdf.set_font('helvetica', 'B', 14)
     pdf.cell(0, 10, 'Bauteil- und Mengenübersicht (Gesamtauftrag)', 0, 1, 'L')
@@ -216,14 +209,12 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
 col_left, col_right = st.columns([5, 7], gap="medium")
 
 with col_left:
-    # 1. Auftrags- & Kopfdaten
     st.markdown("### Auftrags- & Kopfdaten (Druck-Metadaten)")
     with st.container(border=True):
         auftrag = st.text_input("Auftrag", key="inp_auftrag")
         material = st.text_input("Material", key="inp_material")
         sonstiges = st.text_input("Sonstiges", key="inp_sonstiges")
 
-    # 2. Maschinen- & Industrie-Parameter
     st.markdown("### Maschinen- & Industrie-Parameter")
     with st.container(border=True):
         c1, c2 = st.columns(2)
@@ -262,7 +253,6 @@ with col_left:
                 freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, format="%d", key="num_f_anzahl")
             freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True, key="radio_f_kante")
 
-    # 3. Verfügbare Pressplatten (Rohmaterial)
     st.markdown("### 1. Verfügbare Pressplatten (Rohmaterial)")
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
@@ -299,7 +289,6 @@ with col_left:
         else:
             st.caption("Noch keine Rohplatten hinterlegt.")
 
-    # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
         tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2.2, 1.3, 1.3, 1.5, 0.8, 2.3])
@@ -357,7 +346,6 @@ with col_left:
                 saege = float(schnittfuge)
                 strategie = st.session_state.get("radio_aufteilung", "Optimal")
                 
-                # Besäumungswerte auslesen
                 besaeum_aktiv = st.session_state.get("chk_besaeum", False)
                 if besaeum_aktiv:
                     m_l = float(st.session_state.get("num_b_l_vorn", 10))
@@ -370,7 +358,6 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Sicherheitsprüfung: Prüfen, ob Bauteile größer als die Platte sind
                 oversized = False
                 for t in st.session_state.bauteile:
                     if t["Länge (mm)"] > max_w_row or t["Höhe (mm)"] > max_h_plate:
@@ -380,117 +367,99 @@ with col_left:
                 if oversized:
                     st.error("Fehler: Mindestens ein Bauteil ist größer als die verfügbare Pressplatte (inkl. Besäumung/Randabzug)!")
                 else:
-                    # 2D MaxRects / Free-Rectangles Packer Algorithmus für lückenlose Ausnutzung
-                    def pack_maxrects(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
+                    # Echter industrieller Guillotine-Streifen-Packer (Schnitt durchgehend von Kante zu Kante)
+                    def pack_guillotine(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
                         max_w = plate_w - m_r
                         max_h = plate_h - m_b
-                        
-                        free_rects = [{
-                            "x": m_l,
-                            "y": m_t,
-                            "w": max_w - m_l,
-                            "h": max_h - m_t
-                        }]
                         
                         placed = []
                         unplaced = []
                         
-                        # Nach Fläche absteigend sortieren für optimale Raumausnutzung
-                        sorted_items = sorted(items, key=lambda x: x["w"] * x["h"], reverse=True)
+                        # Sortieren nach Höhe absteigend für saubere Streifenbildung
+                        remaining = sorted(items, key=lambda x: (x["h"], x["w"]), reverse=True)
                         
-                        for item in sorted_items:
-                            iw = item["w"]
-                            ih = item["h"]
+                        cur_y = m_t
+                        plate_total_area = plate_w * plate_h
+                        
+                        while remaining and cur_y < max_h:
+                            # Finde die maximale Höhe für diesen Streifen basierend auf dem ersten Teil
+                            strip_item = remaining[0]
+                            strip_h = strip_item["h"]
                             
-                            best_rect_idx = -1
-                            best_short_side_fit = float('inf')
-                            best_long_side_fit = float('inf')
-                            
-                            # Bestes freies Rechteck finden (Heuristik: Best Short Side Fit)
-                            for idx, rect in enumerate(free_rects):
-                                if rect["w"] >= iw and rect["h"] >= ih:
-                                    leftover_w = rect["w"] - iw
-                                    leftover_h = rect["h"] - ih
-                                    short_side = min(leftover_w, leftover_h)
-                                    long_side = max(leftover_w, leftover_h)
-                                    
-                                    if short_side < best_short_side_fit or (short_side == best_short_side_fit and long_side < best_long_side_fit):
-                                        best_short_side_fit = short_side
-                                        best_long_side_fit = long_side
-                                        best_rect_idx = idx
-                                        
-                            if best_rect_idx != -1:
-                                rect = free_rects.pop(best_rect_idx)
+                            if cur_y + strip_h > max_h:
+                                unplaced.extend(remaining)
+                                break
                                 
-                                placed.append({
-                                    "x": rect["x"],
-                                    "y": rect["y"],
-                                    "w": iw,
-                                    "h": ih,
-                                    "name": item["name"]
-                                })
-                                
-                                # Restliche Freiräume aufteilen (Guillotine-Split mit Sägefuge)
-                                new_rects = []
-                                if rect["w"] - iw - saege > 20:
-                                    new_rects.append({
-                                        "x": rect["x"] + iw + saege,
-                                        "y": rect["y"],
-                                        "w": rect["w"] - iw - saege,
-                                        "h": rect["h"]
-                                    })
-                                if rect["h"] - ih - saege > 20:
-                                    new_rects.append({
-                                        "x": rect["x"],
-                                        "y": rect["y"] + ih + saege,
-                                        "w": rect["w"],
-                                        "h": rect["h"] - ih - saege
-                                    })
+                            # Alle Teile finden, die in diesen horizontalen Streifen passen
+                            strip_parts = []
+                            i = 0
+                            while i < len(remaining):
+                                item = remaining[i]
+                                if item["h"] <= strip_h:
+                                    strip_parts.append(item)
+                                    remaining.pop(i)
+                                else:
+                                    i += 1
                                     
-                                for nr in new_rects:
-                                    if nr["w"] > 20 and nr["h"] > 20:
-                                        free_rects.append(nr)
-                                        
-                                # Überlappende oder redundante Freiräume bereinigen
-                                optimized_rects = []
-                                for i, r1 in enumerate(free_rects):
-                                    contained = False
-                                    for j, r2 in enumerate(free_rects):
-                                        if i != j:
-                                            if (r2["x"] <= r1["x"] and r2["y"] <= r1["y"] and 
-                                                r2["x"] + r2["w"] >= r1["x"] + r1["w"] and 
-                                                r2["y"] + r2["h"] >= r1["y"] + r1["h"]):
-                                                contained = True
-                                                break
-                                    if not contained:
-                                        optimized_rects.append(r1)
-                                free_rects = optimized_rects
+                            # Im Streifen von links nach rechts platzieren (durchgehender Schnitt entlang der X-Achse)
+                            cur_x = m_l
+                            row_placed = []
+                            for p in strip_parts:
+                                if cur_x + p["w"] <= max_w:
+                                    row_placed.append({
+                                        "x": cur_x,
+                                        "y": cur_y,
+                                        "w": p["w"],
+                                        "h": p["h"],
+                                        "name": p["name"]
+                                    })
+                                    cur_x += p["w"] + saege
+                                else:
+                                    unplaced.append(p)
+                                    
+                            if row_placed:
+                                placed.extend(row_placed)
+                                cur_y += strip_h + saege
                             else:
-                                unplaced.append(item)
+                                break
                                 
-                        # Verbleibende freie Rechtecke als Reststücke erfassen
+                        unplaced.extend(remaining)
+                        
+                        # Reststücke ermitteln (Rechteck unten und rechts)
                         offcuts = []
-                        for r in free_rects:
-                            if r["w"] > 50 and r["h"] > 50:
-                                is_valid_rest = (r["w"] >= 500 and r["h"] >= 2000) or (r["h"] >= 500 and r["w"] >= 2000)
+                        if placed:
+                            max_used_x = max(p["x"] + p["w"] for p in placed)
+                            max_used_y = max(p["y"] + p["h"] for p in placed)
+                            
+                            # Rest rechts neben den Streifen
+                            if max_w - max_used_x > 50:
                                 offcuts.append({
-                                    "x": r["x"],
-                                    "y": r["y"],
-                                    "w": r["w"],
-                                    "h": r["h"],
-                                    "to_scrap": not is_valid_rest
+                                    "x": max_used_x,
+                                    "y": m_t,
+                                    "w": max_w - max_used_x,
+                                    "h": max_h - m_t,
+                                    "to_scrap": False
+                                })
+                            # Rest unten unter den Streifen
+                            if max_h - max_used_y > 50:
+                                offcuts.append({
+                                    "x": m_l,
+                                    "y": max_used_y,
+                                    "w": max_w - m_l,
+                                    "h": max_h - max_used_y,
+                                    "to_scrap": False
                                 })
                                 
                         return placed, offcuts, unplaced
 
-                    def pack_all_items_maxrects(items_to_pack, title_prefix, variant_key):
+                    def pack_all_items_guillotine(items_to_pack, title_prefix, variant_key):
                         current_items = list(items_to_pack)
                         plate_idx = 1
                         generated_layouts = []
                         plate_total_area = default_plate_w * default_plate_h
                         
                         while current_items and plate_idx <= 20:
-                            placed, offcuts, unplaced = pack_maxrects(
+                            placed, offcuts, unplaced = pack_guillotine(
                                 current_items, default_plate_w, default_plate_h, m_l, m_r, m_t, m_b, saege
                             )
                             
@@ -530,20 +499,20 @@ with col_left:
                             items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
 
                     if strategie == "Längsschnitte bevorzugen":
-                        norm_layouts = pack_all_items_maxrects(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
+                        norm_layouts = pack_all_items_guillotine(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
                         if norm_layouts:
                             layouts.extend(norm_layouts)
                     elif strategie == "Kopfschnitte bevorzugen":
                         if valid_rot:
-                            rot_layouts = pack_all_items_maxrects(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
+                            rot_layouts = pack_all_items_guillotine(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
                             if rot_layouts:
                                 layouts.extend(rot_layouts)
                     else:  # "Optimal"
-                        norm_layouts = pack_all_items_maxrects(items_normal, "Schnittplan (Standard)", "Standard")
+                        norm_layouts = pack_all_items_guillotine(items_normal, "Schnittplan (Standard)", "Standard")
                         if norm_layouts:
                             layouts.extend(norm_layouts)
                         if valid_rot:
-                            rot_layouts = pack_all_items_maxrects(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
+                            rot_layouts = pack_all_items_guillotine(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
                             if rot_layouts:
                                 layouts.extend(rot_layouts)
 
@@ -687,7 +656,7 @@ with col_right:
                 '''
         
         svg_code = f'''
-        <div style="background-content: transparent; padding: 0px;">
+        <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
                 <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']} — Auslastung: {layout['utilization']}%)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
@@ -697,7 +666,7 @@ with col_right:
         '''
     else:
         svg_code = '''
-        <div style="background-content: transparent; padding: 0px;">
+        <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
                 <text x="35" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
                 <rect x="35" y="45" width="630" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
