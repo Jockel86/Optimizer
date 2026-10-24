@@ -72,7 +72,7 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion mit identischer Spaltenstruktur (Position, Länge, Breite, gesamt, auf Plan, Rest)
+# PDF-Generierungsfunktion mit robuster Textplatzierung (kein Abschneiden bei kleinen Teilen)
 def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     
@@ -176,14 +176,24 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
             pdf.set_draw_color(44, 62, 80)
             pdf.rect(rx, ry, rw, rh, 'DF')
             
-            if rw > 10 and rh > 6:
+            # Robuste Textplatzierung mittels pdf.text() für alle Werkstücke (auch kleine Teile)
+            txt = f'{int(p["w"])}x{int(p["h"])}'
+            if rw > 6 and rh > 4:
                 pdf_font_size = 8
-                if rw < 25 or rh < 12:
+                if rw < 35 or rh < 15:
                     pdf_font_size = 6
+                if rw < 20 or rh < 10:
+                    pdf_font_size = 5
+                if rw < 12 or rh < 6:
+                    pdf_font_size = 4
+                
                 pdf.set_font('helvetica', 'B', pdf_font_size)
                 pdf.set_text_color(255, 255, 255)
-                pdf.set_xy(rx, ry + (rh / 2) - 3)
-                pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
+                
+                string_w = pdf.get_string_width(txt)
+                text_x = rx + max(1, (rw - string_w) / 2)
+                text_y = ry + (rh / 2) + (pdf_font_size * 0.35)
+                pdf.text(text_x, text_y, txt)
                 pdf.set_text_color(0, 0, 0)
 
         # Bauteil- und Mengenübersicht unter der Vorschau im PDF
