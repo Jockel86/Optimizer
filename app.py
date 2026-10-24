@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import math
 from collections import defaultdict
 
 # Seitenkonfiguration im Wide-Modus
@@ -156,7 +157,7 @@ with col_left:
                     st.session_state.rohplatten.pop()
                     st.rerun()
         else:
-            st.caption("Keine Rohplatten hinterlegt.")
+            st.caption("Noch keine Rohplatten hinterlegt.")
 
     # 4. Gewünschte Bauteile / Zuschnitte
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
@@ -195,7 +196,7 @@ with col_left:
                     st.session_state.bauteile.pop()
                     st.rerun()
         else:
-            st.caption("Keine Bauteile hinterlegt.")
+            st.caption("Noch keine Bauteile hinterlegt.")
 
         st.write("")
         act1, act2 = st.columns(2)
@@ -214,67 +215,113 @@ with col_left:
                     default_plate_h = st.session_state.rohplatten[0]["Höhe (mm)"]
                 
                 saege = float(schnittfuge)
-                
-                item_counts = defaultdict(int)
-                item_dims = {}
-                for t in st.session_state.bauteile:
-                    key = (t["Länge (mm)"], t["Höhe (mm)"], t["Position"])
-                    item_counts[key] += int(t["Anz."])
-                    item_dims[key] = (t["Länge (mm)"], t["Höhe (mm)"], t["Position"])
-                
-                sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
-                
-                placed = []
-                margin = 10.0  # Angepasst auf 10 mm Rand für perfekte Ausnutzung
-                cur_y = margin
-                max_plate_w = default_plate_w - margin
-                
-                for key in sorted_keys:
-                    w, h, name = item_dims[key]
-                    remaining_count = item_counts[key]
+                drehbar_aktiv = st.session_state.get("chk_drehbar", True)
+                margin = 10.0
+                max_w_row = default_plate_w - 2 * margin
+                max_h_plate = default_plate_h - 2 * margin
+
+                # Hilfsfunktion zum Packen einer Variante
+                def try_pack(items_to_pack):
+                    item_counts = defaultdict(int)
+                    item_dims = {}
+                    for item in items_to_pack:
+                        key = (item["w"], item["h"], item["name"])
+                        item_counts[key] += 1
+                        item_dims[key] = (item["w"], item["h"], item["name"])
                     
-                    while remaining_count > 0:
-                        cur_x = margin
-                        row_items = []
+                    sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
+                    placed_items = []
+                    cur_y = margin
+                    
+                    for key in sorted_keys:
+                        w, h, name = item_dims[key]
+                        remaining_count = item_counts[key]
                         
                         while remaining_count > 0:
-                            needed_w = w if not row_items else (w + saege)
-                            if cur_x + needed_w <= max_plate_w:
-                                if row_items:
-                                    cur_x += saege
-                                row_items.append((cur_x, cur_y, w, h, name))
-                                cur_x += w
-                                remaining_count -= 1
-                            else:
-                                break
-                        
-                        if not row_items:
-                            break
+                            cur_x = margin
+                            row_items = []
                             
-                        for rx, ry, rw, rh, rname in row_items:
-                            placed.append({
-                                "x": rx,
-                                "y": ry,
-                                "w": rw,
-                                "h": rh,
-                                "name": rname
-                            })
-                        
-                        cur_y += h + saege
+                            while remaining_count > 0:
+                                needed_w = w if not row_items else (w + saege)
+                                if cur_x + needed_w <= default_plate_w - margin:
+                                    if row_items:
+                                        cur_x += saege
+                                    row_items.append((cur_x, cur_y, w, h, name))
+                                    cur_x += w
+                                    remaining_count -= 1
+                                else:
+                                    break
+                            
+                            if not row_items:
+                                break
+                                
+                            for rx, ry, rw, rh, rname in row_items:
+                                placed_items.append({
+                                    "x": rx, "y": ry, "w": rw, "h": rh, "name": rname
+                                })
+                            
+                            cur_y += h + saege
+                    return placed_items
+
+                layouts = []
+
+                # Variante 1: Normale Ausrichtung
+                items_normal = []
+                for t in st.session_state.bauteile:
+                    for _ in range(int(t["Anz."])):
+                        items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
                 
-                st.session_state.optimized_layouts = [{
-                    "plate_w": default_plate_w,
-                    "plate_h": default_plate_h,
-                    "placed": placed
-                }]
-                st.success("Zuschnitt & Reststücke erfolgreich berechnet!")
+                items_normal.sort(key=lambda x: x["h"], reverse=True)
+                res_normal = try_pack(items_normal)
+                if res_normal:
+                    layouts.append({
+                        "title": "Schnittplan 1: Standard-Ausrichtung (Gitter / Mehrere Reihen)",
+                        "plate_w": default_plate_w,
+                        "plate_h": default_plate_h,
+                        "placed": res_normal
+                    })
+
+                # Variante 2: Gedrehte Ausrichtung (90 Grad), falls erlaubt und sinnvoll
+                if drehbar_aktiv:
+                    items_rotated = []
+                    valid_rotation = True
+                    for t in st.session_state.bauteile:
+                        rw, rh = t["Höhe (mm)"], t["Länge (mm)"] # Getauscht
+                        if rw > max_w_row or rh > max_h_plate:
+                            valid_rotation = False
+                        for _ in range(int(t["Anz."])):
+                            items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
+                    
+                    if valid_rotation:
+                        items_rotated.sort(key=lambda x: x["h"], reverse=True)
+                        res_rotated = try_pack(items_rotated)
+                        # Prüfen, ob sich die gedrehte Variante optisch/strukturell von normal unterscheidet
+                        if res_rotated:
+                            layouts.append({
+                                "title": "Schnittplan 2: Gedrehte Ausrichtung (90° - Längsstreifen)",
+                                "plate_w": default_plate_w,
+                                "plate_h": default_plate_h,
+                                "placed": res_rotated
+                            })
+
+                if layouts:
+                    st.session_state.optimized_layouts = layouts
+                    st.success(f"{len(layouts)} Zuschnitt-Varianten erfolgreich berechnet!")
+                else:
+                    st.error("Bauteile passen nicht auf die gewählte Pressplatte!")
                 st.rerun()
 
 with col_right:
     header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
     with header_c1:
-        plan_options = [f"Schnittplan {i+1} [Platte {int(lay['plate_w'])}x{int(lay['plate_h'])}mm]" for i, lay in enumerate(st.session_state.optimized_layouts)] if st.session_state.optimized_layouts else ["Kein Schnittplan berechnet"]
-        selected_plan = st.selectbox("Schnittplan:", plan_options, label_visibility="visible", key="sel_plan")
+        if st.session_state.optimized_layouts:
+            plan_options = [lay["title"] for lay in st.session_state.optimized_layouts]
+            selected_plan_title = st.selectbox("Schnittplan-Variante wählen:", plan_options, label_visibility="visible", key="sel_plan_variant")
+            selected_index = plan_options.index(selected_plan_title)
+        else:
+            selected_index = 0
+            st.selectbox("Schnittplan:", ["Kein Schnittplan berechnet"], label_visibility="visible", key="sel_plan")
+            
     with header_c2:
         st.write("")
         rest_chk = st.checkbox("Reststücke", value=True, key="chk_rest")
@@ -286,7 +333,7 @@ with col_right:
     st.markdown("### Schnittplan-Vorschau")
     
     if st.session_state.optimized_layouts:
-        layout = st.session_state.optimized_layouts[0]
+        layout = st.session_state.optimized_layouts[selected_index]
         pw = layout["plate_w"]
         ph = layout["plate_h"]
         
@@ -322,7 +369,7 @@ with col_right:
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Optimierte Reihen-Anordnung)</text>
+                <text x="20" y="20" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm ({layout['title']})</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
                 {rects_svg}
             </svg>
