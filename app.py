@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import math
 from collections import defaultdict
+from fpdf import FPDF
+import io
 
 # Seitenkonfiguration im Wide-Modus
 st.set_page_config(
@@ -69,6 +71,51 @@ def update_teil_dims():
         st.session_state.teil_l_input = int(b)
         st.session_state.teil_h_input = int(h)
         st.rerun()
+
+# PDF-Generierungsfunktion
+def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('helvetica', 'B', 16)
+    
+    # Titel
+    pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
+    pdf.ln(5)
+    
+    # Kopfdaten / Metadaten
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 7, 'Auftrags- & Kopfdaten:', 0, 1)
+    pdf.set_font('helvetica', '', 10)
+    pdf.cell(0, 6, f'Auftrag: {auftrag or "-"}', 0, 1)
+    pdf.cell(0, 6, f'Material: {material or "-"}', 0, 1)
+    pdf.cell(0, 6, f'Sonstiges: {sonstiges or "-"}', 0, 1)
+    pdf.ln(5)
+    
+    if layout:
+        pdf.set_font('helvetica', 'B', 12)
+        pdf.cell(0, 7, f'Gewählter Plan: {layout["title"]}', 0, 1)
+        pdf.cell(0, 6, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
+        pdf.ln(5)
+        
+    # Bauteil- und Mengenübersicht Tabelle
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 7, 'Bauteil- und Mengenübersicht:', 0, 1)
+    
+    pdf.set_font('helvetica', 'B', 10)
+    pdf.set_fill_color(220, 220, 220)
+    pdf.cell(60, 7, 'Position', 1, 0, 'C', True)
+    pdf.cell(35, 7, 'Länge [mm]', 1, 0, 'C', True)
+    pdf.cell(35, 7, 'Breite [mm]', 1, 0, 'C', True)
+    pdf.cell(30, 7, 'Menge', 1, 1, 'C', True)
+    
+    pdf.set_font('helvetica', '', 10)
+    for item in bauteile:
+        pdf.cell(60, 6, str(item["Position"]), 1)
+        pdf.cell(35, 6, str(int(item["Länge (mm)"])), 1, 0, 'C')
+        pdf.cell(35, 6, str(int(item["Höhe (mm)"])), 1, 0, 'C')
+        pdf.cell(30, 6, str(item["Anz."]), 1, 1, 'C')
+        
+    return bytes(pdf.output())
 
 col_left, col_right = st.columns([5, 7], gap="medium")
 
@@ -220,7 +267,6 @@ with col_left:
                 max_w_row = default_plate_w - 2 * margin
                 max_h_plate = default_plate_h - 2 * margin
 
-                # Hilfsfunktion zum Packen einer Variante
                 def try_pack(items_to_pack):
                     item_counts = defaultdict(int)
                     item_dims = {}
@@ -275,18 +321,18 @@ with col_left:
                 res_normal = try_pack(items_normal)
                 if res_normal:
                     layouts.append({
-                        "title": "Schnittplan 1: Standard-Ausrichtung (Gitter / Mehrere Reihen)",
+                        "title": "Schnittplan 1: Standard-Ausrichtung",
                         "plate_w": default_plate_w,
                         "plate_h": default_plate_h,
                         "placed": res_normal
                     })
 
-                # Variante 2: Gedrehte Ausrichtung (90 Grad), falls erlaubt und sinnvoll
+                # Variante 2: Gedrehte Ausrichtung (90 Grad)
                 if drehbar_aktiv:
                     items_rotated = []
                     valid_rotation = True
                     for t in st.session_state.bauteile:
-                        rw, rh = t["Höhe (mm)"], t["Länge (mm)"] # Getauscht
+                        rw, rh = t["Höhe (mm)"], t["Länge (mm)"]
                         if rw > max_w_row or rh > max_h_plate:
                             valid_rotation = False
                         for _ in range(int(t["Anz."])):
@@ -295,10 +341,9 @@ with col_left:
                     if valid_rotation:
                         items_rotated.sort(key=lambda x: x["h"], reverse=True)
                         res_rotated = try_pack(items_rotated)
-                        # Prüfen, ob sich die gedrehte Variante optisch/strukturell von normal unterscheidet
                         if res_rotated:
                             layouts.append({
-                                "title": "Schnittplan 2: Gedrehte Ausrichtung (90° - Längsstreifen)",
+                                "title": "Schnittplan 2: Gedrehte Ausrichtung (90°)",
                                 "plate_w": default_plate_w,
                                 "plate_h": default_plate_h,
                                 "placed": res_rotated
@@ -313,13 +358,13 @@ with col_left:
 
 with col_right:
     header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
+    selected_index = 0
     with header_c1:
         if st.session_state.optimized_layouts:
             plan_options = [lay["title"] for lay in st.session_state.optimized_layouts]
             selected_plan_title = st.selectbox("Schnittplan-Variante wählen:", plan_options, label_visibility="visible", key="sel_plan_variant")
             selected_index = plan_options.index(selected_plan_title)
         else:
-            selected_index = 0
             st.selectbox("Schnittplan:", ["Kein Schnittplan berechnet"], label_visibility="visible", key="sel_plan")
             
     with header_c2:
@@ -327,8 +372,25 @@ with col_right:
         rest_chk = st.checkbox("Reststücke", value=True, key="chk_rest")
     with header_c3:
         st.write("")
-        if st.button("Drucken / PDF Export", use_container_width=True, key="btn_pdf"):
-            st.info("PDF-Export wird vorbereitet...")
+        if st.session_state.optimized_layouts:
+            current_layout = st.session_state.optimized_layouts[selected_index]
+            pdf_bytes = generate_pdf_report(
+                st.session_state.get("inp_auftrag", ""),
+                st.session_state.get("inp_material", ""),
+                st.session_state.get("inp_sonstiges", ""),
+                current_layout,
+                st.session_state.bauteile
+            )
+            st.download_button(
+                label="📥 PDF herunterladen",
+                data=pdf_bytes,
+                file_name="Zuschnittplan.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key="btn_download_pdf"
+            )
+        else:
+            st.button("Drucken / PDF Export", disabled=True, use_container_width=True, key="btn_pdf_disabled")
 
     st.markdown("### Schnittplan-Vorschau")
     
