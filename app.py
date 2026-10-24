@@ -72,8 +72,8 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion mit integrierter grafischer Vorschau
-def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
+# PDF-Generierungsfunktion mit integrierter grafischer Vorschau und Reststücken
+def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_rest):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font('helvetica', 'B', 16)
@@ -118,6 +118,23 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
         pdf.set_draw_color(127, 140, 141)
         pdf.rect(start_x, start_y, draw_w, draw_h, 'DF')
         
+        # Reststücke im PDF zeichnen, falls aktiviert
+        if show_rest and "offcuts" in layout:
+            for o in layout["offcuts"]:
+                ox = start_x + o["x"] * scale
+                oy = start_y + o["y"] * scale
+                ow = o["w"] * scale
+                oh = o["h"] * scale
+                pdf.set_fill_color(226, 232, 240)
+                pdf.set_draw_color(148, 163, 184)
+                pdf.rect(ox, oy, ow, oh, 'DF')
+                if ow > 15 and oh > 8:
+                    pdf.set_font('helvetica', '', 7)
+                    pdf.set_text_color(100, 116, 139)
+                    pdf.set_xy(ox, oy + (oh / 2) - 3)
+                    pdf.cell(ow, 6, f'Rest: {int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
+                    pdf.set_text_color(0, 0, 0)
+
         colors_rgb = [
             (52, 152, 219),
             (46, 204, 113),
@@ -225,12 +242,11 @@ with col_left:
                 freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1, format="%d", key="num_f_anzahl")
             freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True, key="radio_f_kante")
 
-    # 3. Verfügbare Pressplatten (Rohmaterial) - Optimierte Spaltenbreiten
+    # 3. Verfügbare Pressplatten (Rohmaterial)
     st.markdown("### 1. Verfügbare Pressplatten (Rohmaterial)")
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Perfekt angepasste Spaltenbreiten für volle Lesbarkeit aller Felder
         rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.2, 1.3, 1.3, 1.5, 0.8, 2.3])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=3, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
@@ -334,7 +350,12 @@ with col_left:
                     
                     sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
                     placed_items = []
+                    offcuts = []
                     cur_y = margin
+                    max_plate_w = default_plate_w - margin
+                    max_plate_h = default_plate_h - margin
+                    
+                    rows_info = []
                     
                     for key in sorted_keys:
                         w, h, name = item_dims[key]
@@ -346,7 +367,7 @@ with col_left:
                             
                             while remaining_count > 0:
                                 needed_w = w if not row_items else (w + saege)
-                                if cur_x + needed_w <= default_plate_w - margin:
+                                if cur_x + needed_w <= max_plate_w:
                                     if row_items:
                                         cur_x += saege
                                     row_items.append((cur_x, cur_y, w, h, name))
@@ -358,13 +379,38 @@ with col_left:
                             if not row_items:
                                 break
                                 
+                            row_end_x = row_items[-1][0] + row_items[-1][2]
+                            rows_info.append({"y": cur_y, "h": h, "end_x": row_end_x})
+                            
+                            # Rechtes Reststück für diese Reihe
+                            right_offcut_w = max_plate_w - row_end_x
+                            if right_offcut_w > 20:
+                                offcuts.append({
+                                    "x": row_end_x,
+                                    "y": cur_y,
+                                    "w": right_offcut_w,
+                                    "h": h
+                                })
+                            
                             for rx, ry, rw, rh, rname in row_items:
                                 placed_items.append({
                                     "x": rx, "y": ry, "w": rw, "h": rh, "name": rname
                                 })
                             
                             cur_y += h + saege
-                    return placed_items
+                    
+                    # Unteres Reststück über die gesamte Plattenbreite
+                    used_bottom = cur_y - saege if rows_info else margin
+                    bottom_offcut_h = max_plate_h - used_bottom
+                    if bottom_offcut_h > 20:
+                        offcuts.append({
+                            "x": margin,
+                            "y": used_bottom,
+                            "w": max_plate_w - margin,
+                            "h": bottom_offcut_h
+                        })
+
+                    return placed_items, offcuts
 
                 layouts = []
 
@@ -375,13 +421,14 @@ with col_left:
                         items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
                 
                 items_normal.sort(key=lambda x: x["h"], reverse=True)
-                res_normal = try_pack(items_normal)
+                res_normal, off_normal = try_pack(items_normal)
                 if res_normal:
                     layouts.append({
                         "title": "Schnittplan 1: Standard-Ausrichtung",
                         "plate_w": default_plate_w,
                         "plate_h": default_plate_h,
-                        "placed": res_normal
+                        "placed": res_normal,
+                        "offcuts": off_normal
                     })
 
                 # Variante 2: Gedrehte Ausrichtung (90 Grad)
@@ -397,13 +444,14 @@ with col_left:
                     
                     if valid_rotation:
                         items_rotated.sort(key=lambda x: x["h"], reverse=True)
-                        res_rotated = try_pack(items_rotated)
+                        res_rotated, off_rotated = try_pack(items_rotated)
                         if res_rotated:
                             layouts.append({
                                 "title": "Schnittplan 2: Gedrehte Ausrichtung (90°)",
                                 "plate_w": default_plate_w,
                                 "plate_h": default_plate_h,
-                                "placed": res_rotated
+                                "placed": res_rotated,
+                                "offcuts": off_rotated
                             })
 
                 if layouts:
@@ -436,7 +484,8 @@ with col_right:
                 st.session_state.get("inp_material", ""),
                 st.session_state.get("inp_sonstiges", ""),
                 current_layout,
-                st.session_state.bauteile
+                st.session_state.bauteile,
+                rest_chk
             )
             st.download_button(
                 label="📥 PDF herunterladen",
@@ -466,6 +515,19 @@ with col_right:
         start_y = (svg_h - draw_h) / 2
         
         rects_svg = ""
+        
+        # Reststücke in SVG zeichnen, wenn die Checkbox aktiv ist
+        if rest_chk and "offcuts" in layout:
+            for o in layout["offcuts"]:
+                ox = start_x + o["x"] * scale
+                oy = start_y + o["y"] * scale
+                ow = o["w"] * scale
+                oh = o["h"] * scale
+                rects_svg += f'''
+                    <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
+                    <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Rest: {int(o["w"])} x {int(o["h"])}</text>
+                '''
+
         colors = ["#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#d35400"]
         name_to_color = {}
         
