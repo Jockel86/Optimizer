@@ -72,7 +72,7 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion für alle Schnittpläne eines Auftrags (inkl. plattenbezogener Bauteilliste)
+# PDF-Generierungsfunktion mit identischer Spaltenstruktur (Position, Länge, Breite, gesamt, auf Plan, Rest)
 def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     
@@ -105,7 +105,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
         ph = layout["plate_h"]
         
         max_box_w = 170.0
-        max_box_h = 70.0
+        max_box_h = 65.0
         scale = min(max_box_w / pw, max_box_h / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
@@ -186,28 +186,34 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
                 pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
                 pdf.set_text_color(0, 0, 0)
 
-        # Bauteilliste direkt unter die Vorschau auf dieser PDF-Seite setzen
-        pdf.ln(draw_h + 8)
+        # Bauteil- und Mengenübersicht unter der Vorschau im PDF
+        pdf.ln(draw_h + 6)
         pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(0, 6, 'Bauteile auf diesem Schnittplan:', 0, 1)
+        pdf.cell(0, 6, 'Bauteil- und Mengenübersicht (für diesen Plan):', 0, 1)
         
-        pdf.set_font('helvetica', 'B', 9)
+        pdf.set_font('helvetica', 'B', 8.5)
         pdf.set_fill_color(220, 220, 220)
-        pdf.cell(70, 6, 'Position', 1, 0, 'C', True)
-        pdf.cell(35, 6, 'Länge [mm]', 1, 0, 'C', True)
-        pdf.cell(35, 6, 'Breite [mm]', 1, 0, 'C', True)
-        pdf.cell(30, 6, 'Menge auf Plan', 1, 1, 'C', True)
+        pdf.cell(55, 6, 'Position', 1, 0, 'C', True)
+        pdf.cell(25, 6, 'Länge [mm]', 1, 0, 'C', True)
+        pdf.cell(25, 6, 'Breite [mm]', 1, 0, 'C', True)
+        pdf.cell(25, 6, 'gesamt Menge', 1, 0, 'C', True)
+        pdf.cell(30, 6, 'auf diesem Plan', 1, 0, 'C', True)
+        pdf.cell(25, 6, 'Rest Menge', 1, 1, 'C', True)
         
-        pdf.set_font('helvetica', '', 9)
+        pdf.set_font('helvetica', '', 8.5)
         layout_counts = Counter(p["name"] for p in layout["placed"])
         for item in bauteile:
             pos_name = item["Position"]
-            qty_on_plan = layout_counts.get(pos_name, 0)
-            if qty_on_plan > 0:
-                pdf.cell(70, 5, str(item["Position"]), 1)
-                pdf.cell(35, 5, str(int(item["Länge (mm)"])), 1, 0, 'C')
-                pdf.cell(35, 5, str(int(item["Höhe (mm)"])), 1, 0, 'C')
-                pdf.cell(30, 5, str(qty_on_plan), 1, 1, 'C')
+            gesamt = int(item["Anz."])
+            auf_plan = layout_counts.get(pos_name, 0)
+            rest = max(0, gesamt - auf_plan)
+            
+            pdf.cell(55, 5, str(pos_name), 1)
+            pdf.cell(25, 5, str(int(item["Länge (mm)"])), 1, 0, 'C')
+            pdf.cell(25, 5, str(int(item["Höhe (mm)"])), 1, 0, 'C')
+            pdf.cell(25, 5, str(gesamt), 1, 0, 'C')
+            pdf.cell(30, 5, str(auf_plan), 1, 0, 'C')
+            pdf.cell(25, 5, str(rest), 1, 1, 'C')
                 
     return bytes(pdf.output())
 
@@ -716,7 +722,7 @@ with col_right:
         info_rows = []
         for item in st.session_state.bauteile:
             pos_name = item["Position"]
-            gesamt = item["Anz."]
+            gesamt = int(item["Anz."])
             auf_plan = layout_counts.get(pos_name, 0)
             rest = max(0, gesamt - auf_plan)
             info_rows.append([
@@ -737,9 +743,9 @@ with col_right:
                 item["Position"],
                 int(item["Länge (mm)"]),
                 int(item["Höhe (mm)"]),
-                item["Anz."],
+                int(item["Anz."]),
                 0,
-                item["Anz."]
+                int(item["Anz."])
             ])
         info_data = pd.DataFrame(info_rows, columns=[
             "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "auf diesem Plan", "Rest Menge"
