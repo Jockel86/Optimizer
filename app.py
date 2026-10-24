@@ -72,8 +72,8 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion mit integrierter grafischer Vorschau und Reststücken
-def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_rest):
+# PDF-Generierungsfunktion mit integrierter grafischer Vorschau, Besäumung und Reststücken
+def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font('helvetica', 'B', 16)
@@ -96,6 +96,8 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
         pdf.cell(0, 6, f'Gewählter Plan: {layout["title"]}', 0, 1)
         pdf.set_font('helvetica', '', 10)
         pdf.cell(0, 5, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
+        if besaeum_info["aktiv"]:
+            pdf.cell(0, 5, f'Besäumung (V/H/K1/K2): {besaeum_info["l_vorn"]}/{besaeum_info["l_hinten"]}/{besaeum_info["k_vorn"]}/{besaeum_info["k_hinten"]} mm', 0, 1)
         pdf.ln(3)
         
         # Grafische Vorschau im PDF zeichnen
@@ -118,6 +120,18 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile, show_res
         pdf.set_draw_color(127, 140, 141)
         pdf.rect(start_x, start_y, draw_w, draw_h, 'DF')
         
+        # Besäumungs-Rahmen im PDF (falls aktiv)
+        if besaeum_info["aktiv"]:
+            bx = start_x + besaeum_info["l_vorn"] * scale
+            by = start_y + besaeum_info["k_vorn"] * scale
+            bw = draw_w - (besaeum_info["l_vorn"] + besaeum_info["l_hinten"]) * scale
+            bh = draw_h - (besaeum_info["k_vorn"] + besaeum_info["k_hinten"]) * scale
+            pdf.set_draw_color(200, 50, 50)
+            pdf.set_line_width(0.3)
+            pdf.rect(bx, by, bw, bh)
+            pdf.set_draw_color(127, 140, 141)
+            pdf.set_line_width(0.2)
+
         # Reststücke im PDF zeichnen, falls aktiviert
         if show_rest and "offcuts" in layout:
             for o in layout["offcuts"]:
@@ -223,15 +237,14 @@ with col_left:
 
         with st.expander("Besäumung (Kantenabzug)"):
             besaeum_aktiv = st.checkbox("Besäumung aktivieren", key="chk_besaeum")
-            bc1, bc2, bc3 = st.columns([2, 1, 1])
-            with bc1:
-                besaeum_mass = st.number_input("Maß pro Kante (mm):", value=10, format="%d", key="num_besaeum")
-            with bc2:
-                st.write("")
-                besaeum_laenge = st.checkbox("Längskanten", value=True, key="chk_b_laenge")
-            with bc3:
-                st.write("")
-                besaeum_hoehe = st.checkbox("Kopfkanten", value=True, key="chk_b_hoehe")
+            if besaeum_aktiv:
+                bc1, bc2 = st.columns(2)
+                with bc1:
+                    besaeum_l_vorn = st.number_input("Vordere Längsseite (mm):", value=10, format="%d", key="num_b_l_vorn")
+                    besaeum_l_hinten = st.number_input("Hintere Längsseite (mm):", value=10, format="%d", key="num_b_l_hinten")
+                with bc2:
+                    besaeum_k_vorn = st.number_input("Vordere Kopfseite (mm):", value=10, format="%d", key="num_b_k_vorn")
+                    besaeum_k_hinten = st.number_input("Hintere Kopfseite (mm):", value=10, format="%d", key="num_b_k_hinten")
 
         with st.expander("Spannungsfreischnitt"):
             freischnitt_aktiv = st.checkbox("Spannungsfreischnitt aktivieren", key="chk_freischnitt")
@@ -336,9 +349,19 @@ with col_left:
                 
                 saege = float(schnittfuge)
                 drehbar_aktiv = st.session_state.get("chk_drehbar", True)
-                margin = 10.0
-                max_w_row = default_plate_w - 2 * margin
-                max_h_plate = default_plate_h - 2 * margin
+                
+                # Besäumungswerte auslesen
+                besaeum_aktiv = st.session_state.get("chk_besaeum", False)
+                if besaeum_aktiv:
+                    m_l = float(st.session_state.get("num_b_l_vorn", 10))
+                    m_r = float(st.session_state.get("num_b_l_hinten", 10))
+                    m_t = float(st.session_state.get("num_b_k_vorn", 10))
+                    m_b = float(st.session_state.get("num_b_k_hinten", 10))
+                else:
+                    m_l, m_r, m_t, m_b = 5.0, 5.0, 5.0, 5.0 # Minimaler Sicherheitsrand
+
+                max_w_row = default_plate_w - m_r
+                max_h_plate = default_plate_h - m_b
 
                 def try_pack(items_to_pack):
                     item_counts = defaultdict(int)
@@ -351,9 +374,9 @@ with col_left:
                     sorted_keys = sorted(item_counts.keys(), key=lambda k: k[1], reverse=True)
                     placed_items = []
                     offcuts = []
-                    cur_y = margin
-                    max_plate_w = default_plate_w - margin
-                    max_plate_h = default_plate_h - margin
+                    cur_y = m_t
+                    max_plate_w = default_plate_w - m_r
+                    max_plate_h = default_plate_h - m_b
                     
                     rows_info = []
                     
@@ -362,7 +385,7 @@ with col_left:
                         remaining_count = item_counts[key]
                         
                         while remaining_count > 0:
-                            cur_x = margin
+                            cur_x = m_l
                             row_items = []
                             
                             while remaining_count > 0:
@@ -382,7 +405,7 @@ with col_left:
                             row_end_x = row_items[-1][0] + row_items[-1][2]
                             rows_info.append({"y": cur_y, "h": h, "end_x": row_end_x})
                             
-                            # Rechtes Reststück für diese Reihe
+                            # Rechtes Reststück
                             right_offcut_w = max_plate_w - row_end_x
                             if right_offcut_w > 20:
                                 offcuts.append({
@@ -399,14 +422,14 @@ with col_left:
                             
                             cur_y += h + saege
                     
-                    # Unteres Reststück über die gesamte Plattenbreite
-                    used_bottom = cur_y - saege if rows_info else margin
+                    # Unteres Reststück
+                    used_bottom = cur_y - saege if rows_info else m_t
                     bottom_offcut_h = max_plate_h - used_bottom
                     if bottom_offcut_h > 20:
                         offcuts.append({
-                            "x": margin,
+                            "x": m_l,
                             "y": used_bottom,
-                            "w": max_plate_w - margin,
+                            "w": max_plate_w - m_l,
                             "h": bottom_offcut_h
                         })
 
@@ -479,13 +502,23 @@ with col_right:
         st.write("")
         if st.session_state.optimized_layouts:
             current_layout = st.session_state.optimized_layouts[selected_index]
+            
+            besaeum_info = {
+                "aktiv": st.session_state.get("chk_besaeum", False),
+                "l_vorn": int(st.session_state.get("num_b_l_vorn", 10)),
+                "l_hinten": int(st.session_state.get("num_b_l_hinten", 10)),
+                "k_vorn": int(st.session_state.get("num_b_k_vorn", 10)),
+                "k_hinten": int(st.session_state.get("num_b_k_hinten", 10))
+            }
+            
             pdf_bytes = generate_pdf_report(
                 st.session_state.get("inp_auftrag", ""),
                 st.session_state.get("inp_material", ""),
                 st.session_state.get("inp_sonstiges", ""),
                 current_layout,
                 st.session_state.bauteile,
-                rest_chk
+                rest_chk,
+                besaeum_info
             )
             st.download_button(
                 label="📥 PDF herunterladen",
@@ -516,7 +549,22 @@ with col_right:
         
         rects_svg = ""
         
-        # Reststücke in SVG zeichnen, wenn die Checkbox aktiv ist
+        # Besäumungs-Rahmen in SVG zeichnen, wenn aktiv
+        if st.session_state.get("chk_besaeum", False):
+            bv_l = st.session_state.get("num_b_l_vorn", 10) * scale
+            bv_r = st.session_state.get("num_b_l_hinten", 10) * scale
+            bk_v = st.session_state.get("num_b_k_vorn", 10) * scale
+            bk_h = st.session_state.get("num_b_k_hinten", 10) * scale
+            
+            bx = start_x + bv_l
+            by = start_y + bk_v
+            bw = draw_w - (bv_l + bv_r)
+            bh = draw_h - (bk_v + bk_h)
+            rects_svg += f'''
+                <rect x="{bx}" y="{by}" width="{bw}" height="{bh}" fill="none" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="6"/>
+            '''
+
+        # Reststücke in SVG zeichnen, wenn Checkbox aktiv ist
         if rest_chk and "offcuts" in layout:
             for o in layout["offcuts"]:
                 ox = start_x + o["x"] * scale
