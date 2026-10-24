@@ -140,20 +140,21 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
                 ow = o["w"] * scale
                 oh = o["h"] * scale
                 
-                if o["to_scrap"]:
-                    pdf.set_fill_color(203, 213, 225)
-                    pdf.set_draw_color(100, 116, 139)
-                    pdf.rect(ox, oy, ow, oh, 'DF')
-                else:
-                    pdf.set_fill_color(226, 232, 240)
-                    pdf.set_draw_color(148, 163, 184)
-                    pdf.rect(ox, oy, ow, oh, 'DF')
-                    if ow > 15 and oh > 8:
-                        pdf.set_font('helvetica', '', 7)
-                        pdf.set_text_color(100, 116, 139)
-                        pdf.set_xy(ox, oy + (oh / 2) - 3)
-                        pdf.cell(ow, 6, f'{int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
-                        pdf.set_text_color(0, 0, 0)
+                if ow > 0 and oh > 0:
+                    if o["to_scrap"]:
+                        pdf.set_fill_color(203, 213, 225)
+                        pdf.set_draw_color(100, 116, 139)
+                        pdf.rect(ox, oy, ow, oh, 'DF')
+                    else:
+                        pdf.set_fill_color(226, 232, 240)
+                        pdf.set_draw_color(148, 163, 184)
+                        pdf.rect(ox, oy, ow, oh, 'DF')
+                        if ow > 15 and oh > 8:
+                            pdf.set_font('helvetica', '', 7)
+                            pdf.set_text_color(100, 116, 139)
+                            pdf.set_xy(ox, oy + (oh / 2) - 3)
+                            pdf.cell(ow, 6, f'{int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
+                            pdf.set_text_color(0, 0, 0)
 
         colors_rgb = [
             (52, 152, 219),
@@ -369,175 +370,181 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Multi-Platten-Packer
-                def pack_all_items(items_to_pack, title_prefix, variant_type_key):
-                    current_items = list(items_to_pack)
-                    plate_idx = 1
-                    generated_layouts = []
-                    
-                    plate_total_area = default_plate_w * default_plate_h
+                # Sicherheitsprüfung: Prüfen, ob Bauteile größer als die Platte sind
+                oversized = False
+                for t in st.session_state.bauteile:
+                    if t["Länge (mm)"] > max_w_row or t["Höhe (mm)"] > max_h_plate:
+                        oversized = True
+                        break
 
-                    while current_items and plate_idx <= 20:
-                        placed_items = []
-                        offcuts = []
-                        cur_y = m_t
-                        max_plate_w = default_plate_w - m_r
-                        max_plate_h = default_plate_h - m_b
+                if oversized:
+                    st.error("Fehler: Mindestens ein Bauteil ist größer als die verfügbare Pressplatte (inkl. Besäumung/Randabzug)!")
+                else:
+                    # Multi-Platten-Packer
+                    def pack_all_items(items_to_pack, title_prefix, variant_type_key):
+                        current_items = list(items_to_pack)
+                        plate_idx = 1
+                        generated_layouts = []
                         
-                        remaining_on_plate = list(current_items)
-                        remaining_on_plate.sort(key=lambda x: (x["h"], x["w"]), reverse=True)
-                        
-                        plate_placed = []
-                        next_remaining = []
-                        
-                        while remaining_on_plate and cur_y < max_plate_h:
-                            row_item = remaining_on_plate.pop(0)
-                            row_h = row_item["h"]
+                        plate_total_area = default_plate_w * default_plate_h
+
+                        while current_items and plate_idx <= 20:
+                            cur_y = m_t
+                            max_plate_w = default_plate_w - m_r
+                            max_plate_h = default_plate_h - m_b
                             
-                            if cur_y + row_h > max_plate_h:
-                                next_remaining.append(row_item)
-                                next_remaining.extend(remaining_on_plate)
+                            remaining_on_plate = list(current_items)
+                            remaining_on_plate.sort(key=lambda x: (x["h"], x["w"]), reverse=True)
+                            
+                            plate_placed = []
+                            next_remaining = []
+                            offcuts = []
+                            
+                            while remaining_on_plate and cur_y < max_plate_h:
+                                row_item = remaining_on_plate.pop(0)
+                                row_h = row_item["h"]
+                                
+                                if cur_y + row_h > max_plate_h:
+                                    next_remaining.append(row_item)
+                                    next_remaining.extend(remaining_on_plate)
+                                    break
+                                    
+                                cur_x = m_l
+                                row_items = [{
+                                    "x": cur_x,
+                                    "y": cur_y,
+                                    "w": row_item["w"],
+                                    "h": row_h,
+                                    "name": row_item["name"]
+                                }]
+                                cur_x += row_item["w"]
+                                
+                                i = 0
+                                while i < len(remaining_on_plate):
+                                    item = remaining_on_plate[i]
+                                    needed_w = item["w"] + saege
+                                    if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
+                                        cur_x += saege
+                                        row_items.append({
+                                            "x": cur_x,
+                                            "y": cur_y,
+                                            "w": item["w"],
+                                            "h": item["h"],
+                                            "name": item["name"]
+                                        })
+                                        cur_x += item["w"]
+                                        remaining_on_plate.pop(i)
+                                    else:
+                                        i += 1
+                                        
+                            # Interne Restflächen unter kürzeren Teilen in derselben Zeile prüfen
+                                for rit in row_items:
+                                    if rit["h"] < row_h:
+                                        sub_w = rit["w"]
+                                        sub_h = row_h - rit["h"]
+                                        if sub_w > 20 and sub_h > 20:
+                                            is_valid_rest = (sub_w >= 500 and sub_h >= 2000) or (sub_h >= 500 and sub_w >= 2000)
+                                            offcuts.append({
+                                                "x": rit["x"],
+                                                "y": rit["y"] + rit["h"],
+                                                "w": sub_w,
+                                                "h": sub_h,
+                                                "to_scrap": not is_valid_rest
+                                            })
+
+                                plate_placed.extend(row_items)
+                                
+                                row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
+                                right_offcut_w = max_plate_w - row_end_x
+                                if right_offcut_w > 20:
+                                    is_valid_rest = (right_offcut_w >= 500 and row_h >= 2000) or (row_h >= 500 and right_offcut_w >= 2000)
+                                    offcuts.append({
+                                        "x": row_end_x,
+                                        "y": cur_y,
+                                        "w": right_offcut_w,
+                                        "h": row_h,
+                                        "to_scrap": not is_valid_rest
+                                    })
+                                    
+                                cur_y += row_h + saege
+                                
+                            next_remaining.extend(remaining_on_plate)
+                            
+                            if plate_placed:
+                                max_used_y = max(p["y"] + p["h"] for p in plate_placed)
+                                bottom_offcut_h = max_plate_h - max_used_y
+                                if bottom_offcut_h > 20:
+                                    offcut_w = max_plate_w - m_l
+                                    is_valid_rest = (offcut_w >= 500 and bottom_offcut_h >= 2000) or (bottom_offcut_h >= 500 and offcut_w >= 2000)
+                                    offcuts.append({
+                                        "x": m_l,
+                                        "y": max_used_y,
+                                        "w": offcut_w,
+                                        "h": bottom_offcut_h,
+                                        "to_scrap": not is_valid_rest
+                                    })
+                                
+                                placed_area = sum(p["w"] * p["h"] for p in plate_placed)
+                                utilization = round((placed_area / plate_total_area) * 100, 1)
+
+                                generated_layouts.append({
+                                    "title": f"{title_prefix} - Platte {plate_idx}",
+                                    "variant_type": variant_type_key,
+                                    "utilization": utilization,
+                                    "plate_w": default_plate_w,
+                                    "plate_h": default_plate_h,
+                                    "placed": plate_placed,
+                                    "offcuts": offcuts
+                                })
+                                current_items = next_remaining
+                                plate_idx += 1
+                            else:
                                 break
                                 
-                            cur_x = m_l
-                            row_items = [{
-                                "x": cur_x,
-                                "y": cur_y,
-                                "w": row_item["w"],
-                                "h": row_h,
-                                "name": row_item["name"]
-                            }]
-                            cur_x += row_item["w"]
-                            
-                            i = 0
-                            while i < len(remaining_on_plate):
-                                item = remaining_on_plate[i]
-                                needed_w = item["w"] + saege
-                                if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
-                                    cur_x += saege
-                                    row_items.append({
-                                        "x": cur_x,
-                                        "y": cur_y,
-                                        "w": item["w"],
-                                        "h": item["h"],
-                                        "name": item["name"]
-                                    })
-                                    cur_x += item["w"]
-                                    remaining_on_plate.pop(i)
-                                else:
-                                    i += 1
-                                    
-                            # Interne Restflächen unter kürzeren Teilen in derselben Zeile prüfen
-                            for rit in row_items:
-                                if rit["h"] < row_h:
-                                    sub_w = rit["w"]
-                                    sub_h = row_h - rit["h"]
-                                    if sub_w > 20 and sub_h > 20:
-                                        is_valid_rest = (sub_w >= 500 and sub_h >= 2000) or (sub_h >= 500 and sub_w >= 2000)
-                                        offcuts.append({
-                                            "x": rit["x"],
-                                            "y": rit["y"] + rit["h"],
-                                            "w": sub_w,
-                                            "h": sub_h,
-                                            "to_scrap": not is_valid_rest
-                                        })
+                        return generated_layouts if not current_items else []
 
-                            plate_placed.extend(row_items)
-                            
-                            row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
-                            right_offcut_w = max_plate_w - row_end_x
-                            if right_offcut_w > 20:
-                                is_valid_rest = (right_offcut_w >= 500 and row_h >= 2000) or (row_h >= 500 and right_offcut_w >= 2000)
-                                offcuts.append({
-                                    "x": row_end_x,
-                                    "y": cur_y,
-                                    "w": right_offcut_w,
-                                    "h": row_h,
-                                    "to_scrap": not is_valid_rest
-                                })
-                                
-                            cur_y += row_h + saege
-                            
-                        next_remaining.extend(remaining_on_plate)
+                    layouts = []
+
+                    items_normal = []
+                    items_rotated = []
+                    valid_rot = True
+
+                    for t in st.session_state.bauteile:
+                        for _ in range(int(t["Anz."])):
+                            items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
                         
-                        if plate_placed:
-                            max_used_y = max(p["y"] + p["h"] for p in plate_placed)
-                            bottom_offcut_h = max_plate_h - max_used_y
-                            if bottom_offcut_h > 20:
-                                offcut_w = max_plate_w - m_l
-                                is_valid_rest = (offcut_w >= 500 and bottom_offcut_h >= 2000) or (bottom_offcut_h >= 500 and offcut_w >= 2000)
-                                offcuts.append({
-                                    "x": m_l,
-                                    "y": max_used_y,
-                                    "w": offcut_w,
-                                    "h": bottom_offcut_h,
-                                    "to_scrap": not is_valid_rest
-                                })
-                            
-                            placed_area = sum(p["w"] * p["h"] for p in plate_placed)
-                            utilization = round((placed_area / plate_total_area) * 100, 1)
+                        rw, rh = t["Höhe (mm)"], t["Länge (mm)"]
+                        if rw > max_w_row or rh > max_h_plate:
+                            valid_rot = False
+                        for _ in range(int(t["Anz."])):
+                            items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
 
-                            generated_layouts.append({
-                                "title": f"{title_prefix} - Platte {plate_idx}",
-                                "variant_type": variant_type_key,
-                                "utilization": utilization,
-                                "plate_w": default_plate_w,
-                                "plate_h": default_plate_h,
-                                "placed": plate_placed,
-                                "offcuts": offcuts
-                            })
-                            current_items = next_remaining
-                            plate_idx += 1
-                        else:
-                            break
-                            
-                    return generated_layouts if not current_items else []
+                    if strategie == "Längsschnitte bevorzugen":
+                        norm_layouts = pack_all_items(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
+                        if norm_layouts:
+                            layouts.extend(norm_layouts)
+                    elif strategie == "Kopfschnitte bevorzugen":
+                        if valid_rot:
+                            rot_layouts = pack_all_items(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
+                            if rot_layouts:
+                                layouts.extend(rot_layouts)
+                    else:  # "Optimal"
+                        norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)", "Standard")
+                        if norm_layouts:
+                            layouts.extend(norm_layouts)
+                        if valid_rot:
+                            rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
+                            if rot_layouts:
+                                layouts.extend(rot_layouts)
 
-                layouts = []
-
-                # Bauteile in Listen aufteilen
-                items_normal = []
-                items_rotated = []
-                valid_rot = True
-
-                for t in st.session_state.bauteile:
-                    for _ in range(int(t["Anz."])):
-                        items_normal.append({"w": t["Länge (mm)"], "h": t["Höhe (mm)"], "name": t["Position"]})
-                    
-                    rw, rh = t["Höhe (mm)"], t["Länge (mm)"]
-                    if rw > max_w_row or rh > max_h_plate:
-                        valid_rot = False
-                    for _ in range(int(t["Anz."])):
-                        items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
-
-                # Je nach gewählter Strategie berechnen
-                if strategie == "Längsschnitte bevorzugen":
-                    norm_layouts = pack_all_items(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
-                    if norm_layouts:
-                        layouts.extend(norm_layouts)
-                elif strategie == "Kopfschnitte bevorzugen":
-                    if valid_rot:
-                        rot_layouts = pack_all_items(items_rotated, "Schnittplan (Kopfschnitte)", "Kopfschnitte")
-                        if rot_layouts:
-                            layouts.extend(rot_layouts)
-                else:  # "Optimal"
-                    norm_layouts = pack_all_items(items_normal, "Schnittplan (Standard)", "Standard")
-                    if norm_layouts:
-                        layouts.extend(norm_layouts)
-                    if valid_rot:
-                        rot_layouts = pack_all_items(items_rotated, "Schnittplan (90° Gedreht)", "Rotated")
-                        if rot_layouts:
-                            layouts.extend(rot_layouts)
-
-                if layouts:
-                    st.session_state.optimized_layouts = layouts
-                    st.success(f"{len(layouts)} Schnittpläne erfolgreich berechnet!")
-                else:
-                    st.error("Bauteile überschreiten die maximalen Pressplatten-Abmessungen!")
-                st.rerun()
+                    if layouts:
+                        st.session_state.optimized_layouts = layouts
+                        st.success(f"{len(layouts)} Schnittpläne erfolgreich berechnet!")
+                    else:
+                        st.error("Bauteile passen nicht auf die gewählten Pressplatten (Abmessungen oder Menge zu groß)!")
+                    st.rerun()
 
 with col_right:
-    # 3 Spalten Layout: Dropdown (voll lesbar), Reststücke-Checkbox und PDF-Download
     header_c1, header_c2, header_c3 = st.columns([6.0, 2.0, 2.0])
     selected_index = 0
     with header_c1:
@@ -630,15 +637,16 @@ with col_right:
                 ow = o["w"] * scale
                 oh = o["h"] * scale
                 
-                if o["to_scrap"]:
-                    rects_svg += f'''
-                        <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
-                    '''
-                else:
-                    rects_svg += f'''
-                        <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
-                        <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(o["w"])} x {int(o["h"])}</text>
-                    '''
+                if ow > 0 and oh > 0:
+                    if o["to_scrap"]:
+                        rects_svg += f'''
+                            <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
+                        '''
+                    else:
+                        rects_svg += f'''
+                            <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="#e2e8f0" opacity="0.7" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4"/>
+                            <text x="{ox + ow/2}" y="{oy + oh/2}" fill="#64748b" font-family="Segoe UI" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">{int(o["w"])} x {int(o["h"])}</text>
+                        '''
 
         colors = ["#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#d35400"]
         name_to_color = {}
