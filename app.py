@@ -3,48 +3,60 @@ import pandas as pd
 from PIL import Image
 import io
 
-# Seitenkonfiguration im Wide-Modus für optimale Industrie-Ansicht
+# Seitenkonfiguration im Wide-Modus
 st.set_page_config(
-    page_title="Professioneller Kunststoff-Zuschnittplaner",
+    page_title="Professioneller Kunststoff-Zuschnittplaner (Industrie-Edition)",
     page_icon="✂️",
     layout="wide"
 )
 
-# Sitzungsspeicher (Session State) für Tabellen initialisieren
+# Custom CSS für ein helles, professionelles Industrie-Design (passend zum Desktop-Look)
+st.markdown("""
+<style>
+    .main {
+        background-color: #f0f2f5;
+    }
+    .stApp {
+        background-color: #f0f2f5;
+    }
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 1.5rem;
+    }
+    div[data-testid="stExpander"] {
+        background-color: #ffffff;
+        border-radius: 6px;
+        border: 1px solid #dcdcdc;
+        margin-bottom: 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Session State Initialisierung für Tabellen
 if "rohplatten" not in st.session_state:
     st.session_state.rohplatten = []
 if "bauteile" not in st.session_state:
     st.session_state.bauteile = []
 
-# Titel & Kopfzeile
-st.title("Professioneller Kunststoff-Zuschnittplaner (Industrie-Edition)")
-
-col_top1, col_top2, col_top3 = st.columns([2, 1, 1])
-with col_top1:
-    schnittplan_wahl = st.selectbox("Schnittplan", ["Schnittplan 1"], label_visibility="collapsed")
-with col_top2:
-    reststuecke_chk = st.checkbox("Reststücke anzeigen", value=True)
-with col_top3:
-    if st.button("Drucken / PDF Export", use_container_width=True):
-        st.info("PDF-Export wird vorbereitet...")
-
-# Hauptbereich in zwei Spalten aufteilen
-col_left, col_right = st.columns([5, 7])
+# Hauptlayout in zwei Spalten aufteilen (Links: Eingaben, Rechts: Vorschau & Tabellen)
+col_left, col_right = st.columns([5, 7], gap="medium")
 
 with col_left:
     # 1. Auftrags- & Kopfdaten
-    with st.expander("Auftrags- & Kopfdaten (Druck-Metadaten)", expanded=True):
-        auftrag = st.text_input("Auftrag")
-        material = st.text_input("Material")
-        sonstiges = st.text_input("Sonstiges")
+    st.markdown("### Auftrags- & Kopfdaten (Druck-Metadaten)")
+    with st.container(border=True):
+        auftrag = st.text_input("Auftrag", key="inp_auftrag")
+        material = st.text_input("Material", key="inp_material")
+        sonstiges = st.text_input("Sonstiges", key="inp_sonstiges")
 
     # 2. Maschinen- & Industrie-Parameter
-    with st.expander("Maschinen- & Industrie-Parameter", expanded=True):
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            schnittfuge = st.selectbox("Schnittfuge (mm)", ["4", "4.5", "5", "6", "6.5"], index=3)
-        with col_m2:
-            max_saege_hoehe = st.number_input("Max. Säge-Höhe", value=100)
+    st.markdown("### Maschinen- & Industrie-Parameter")
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            schnittfuge = st.selectbox("Schnittfuge (mm):", ["4", "4.5", "5", "6", "6.5"], index=3)
+        with c2:
+            max_saege_hoehe = st.number_input("Max. Säge-Höhe:", value=100)
         
         drehbar = st.checkbox("Bauteile drehbar (90°)", value=True)
         
@@ -57,51 +69,54 @@ with col_left:
             horizontal=True
         )
 
-        # Besäumung
         with st.expander("Besäumung (Kantenabzug)"):
-            besaeum_aktiv = st.checkbox("Besäumung aktivieren")
-            besaeum_mass = st.number_input("Maß pro Kante (mm)", value=10)
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
+            besaeum_aktiv = st.checkbox("Besäumung aktivieren", key="chk_besaeum")
+            bc1, bc2, bc3 = st.columns([2, 1, 1])
+            with bc1:
+                besaeum_mass = st.number_input("Maß pro Kante (mm):", value=10, key="num_besaeum")
+            with bc2:
+                st.write("")
                 besaeum_laenge = st.checkbox("Längskanten", value=True)
-            with col_b2:
+            with bc3:
+                st.write("")
                 besaeum_hoehe = st.checkbox("Kopfkanten", value=True)
 
-        # Spannungsfreischnitt
         with st.expander("Spannungsfreischnitt"):
-            freischnitt_aktiv = st.checkbox("Spannungsfreischnitt aktivieren")
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                freischnitt_breite = st.number_input("Breite (mm)", value=15)
-            with col_f2:
-                freischnitt_anzahl = st.number_input("Anzahl", value=1, min_value=1)
-            freischnitt_kante = st.radio("Kante", ["Längskante", "Kopfkante"], horizontal=True)
+            freischnitt_aktiv = st.checkbox("Spannungsfreischnitt aktivieren", key="chk_freischnitt")
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                freischnitt_breite = st.number_input("Breite (mm):", value=15)
+            with fc2:
+                freischnitt_anzahl = st.number_input("Anzahl:", value=1, min_value=1)
+            freischnitt_kante = st.radio("Kante:", ["Längskante", "Kopfkante"], horizontal=True)
 
     # 3. Verfügbare Pressplatten (Rohmaterial)
-    with st.expander("1. Verfügbare Pressplatten (Rohmaterial)", expanded=True):
+    st.markdown("### 1. Verfügbare Pressplatten (Rohmaterial)")
+    with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
-        sel_format = st.selectbox("Pos / Format Vorlage", roh_formate, index=6)
         
-        default_l, default_h = 6180, 2560
-        if "x" in sel_format:
-            parts = sel_format.split("x")
-            default_l, default_h = float(parts[0]), float(parts[1])
+        rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2, 1.5, 1.5, 1.5, 1, 0.8])
+        with rc1:
+            sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed")
+        
+        def_l, def_h = 6180, 2560
+        if sel_roh_preset and "x" in sel_roh_preset:
+            parts = sel_roh_preset.split("x")
+            def_l, def_h = float(parts[0]), float(parts[1])
 
-        col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2, 2, 2, 2, 1])
-        with col_r1:
-            roh_l = st.number_input("L", value=default_l, key="roh_l_input")
-        with col_r2:
-            roh_h = st.number_input("H", value=default_h, key="roh_h_input")
-        with col_r3:
-            roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3)
-        with col_r4:
-            roh_anz = st.number_input("Anz", value=1, min_value=1, key="roh_anz_input")
-        with col_r5:
-            st.write("") 
+        with rc2:
+            roh_l = st.number_input("L", value=def_l, key="roh_l_input", label_visibility="collapsed")
+        with rc3:
+            roh_h = st.number_input("H", value=def_h, key="roh_h_input", label_visibility="collapsed")
+        with rc4:
+            roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed")
+        with rc5:
+            roh_anz = st.number_input("Anz", value=1, min_value=1, key="roh_anz_input", label_visibility="collapsed")
+        with rc6:
             if st.button("➕", key="add_roh", use_container_width=True):
                 bez = f"Pressplatte_{int(roh_l)}x{int(roh_h)}"
                 st.session_state.rohplatten.append({
-                    "Bezeichnung": bez, "Länge": roh_l, "Höhe": roh_h, "Stärke": roh_staerke, "Stk.": roh_anz
+                    "Bezeichnung": bez, "Länge (mm)": roh_l, "Höhe (mm)": roh_h, "Stärke": roh_staerke, "Stk.": roh_anz
                 })
                 st.rerun()
 
@@ -116,33 +131,34 @@ with col_left:
             st.caption("Keine Rohplatten hinterlegt.")
 
     # 4. Gewünschte Bauteile / Zuschnitte
-    with st.expander("2. Gewünschte Bauteile / Zuschnitte", expanded=True):
+    st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
+    with st.container(border=True):
         standard_teile = {
             "2050x1020": (2050, 1020), "2030x1250": (2030, 1250), 
             "3050x1020": (3050, 1020), "3050x1250": (3050, 1250)
         }
-        sel_teil = st.selectbox("Pos Vorlage", list(standard_teile.keys()), index=0)
+        tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2, 1.5, 1.5, 1.2, 1, 1.5])
+        with tc1:
+            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed")
         def_tl, def_th = standard_teile[sel_teil]
 
-        col_t1, col_t2, col_t3, col_t4, col_t5 = st.columns([2, 2, 2, 2, 2])
-        with col_t1:
-            teil_l = st.number_input("L", value=def_tl, key="teil_l_input")
-        with col_t2:
-            teil_h = st.number_input("H", value=def_th, key="teil_h_input")
-        with col_t3:
-            teil_st = st.number_input("St", value=20, key="teil_st_input")
-        with col_t4:
-            teil_anz = st.number_input("Anz", value=2, min_value=1, key="teil_anz_input")
-        with col_t5:
-            uploaded_file = st.file_uploader("OCR Karte", type=["png", "jpg", "jpeg", "pdf"], label_visibility="collapsed")
+        with tc2:
+            teil_l = st.number_input("L", value=def_tl, key="teil_l_input", label_visibility="collapsed")
+        with tc3:
+            teil_h = st.number_input("H", value=def_th, key="teil_h_input", label_visibility="collapsed")
+        with tc4:
+            teil_st = st.number_input("St", value=20, key="teil_st_input", label_visibility="collapsed")
+        with tc5:
+            teil_anz = st.number_input("Anz", value=2, min_value=1, key="teil_anz_input", label_visibility="collapsed")
+        with tc6:
+            if st.button("➕", key="add_teil", use_container_width=True):
+                name = f"Pos_{int(teil_l)}x{int(teil_h)}"
+                st.session_state.bauteile.append({
+                    "Position": name, "Länge (mm)": teil_l, "Höhe (mm)": teil_h, "Stärke (mm)": teil_st, "Anz.": teil_anz
+                })
+                st.rerun()
 
-        if st.button("Bauteil hinzufügen (➕)", use_container_width=True):
-            name = f"Pos_{int(teil_l)}x{int(teil_h)}"
-            st.session_state.bauteile.append({
-                "Position": name, "Länge": teil_l, "Höhe": teil_h, "Stärke": teil_st, "Anz.": teil_anz
-            })
-            st.rerun()
-
+        uploaded_file = st.file_uploader("Arbeitskarte laden (OCR Bild/PDF)", type=["png", "jpg", "jpeg", "pdf"])
         if uploaded_file is not None:
             st.success(f"Arbeitskarte {uploaded_file.name} erfolgreich geladen!")
 
@@ -157,38 +173,49 @@ with col_left:
             st.caption("Keine Bauteile hinterlegt.")
 
         st.write("")
-        col_act1, col_act2 = st.columns(2)
-        with col_act1:
+        act1, act2 = st.columns(2)
+        with act1:
             if st.button("Zurücksetzen", use_container_width=True):
                 st.session_state.rohplatten = []
                 st.session_state.bauteile = []
                 st.rerun()
-        with col_act2:
+        with act2:
             if st.button("Optimieren", type="primary", use_container_width=True):
                 st.success("Zuschnitt & Reststücke erfolgreich berechnet!")
 
 with col_right:
-    # Grafik-Vorschau (Sauber gerendert über st.components.v1.html für Streamlit Dark Mode)
-    st.subheader("Schnittplan-Vorschau")
+    # Rechte Spalte: Obere Steuerungsleiste analog zur Desktop-Version
+    header_c1, header_c2, header_c3 = st.columns([3, 2, 2])
+    with header_c1:
+        st.selectbox("Schnittplan:", ["Schnittplan 1 (1 Platte einzeln) [Ausnutzung: 19.65%]"], label_visibility="visible")
+    with header_c2:
+        st.write("")
+        st.checkbox("Reststücke", value=True)
+    with header_c3:
+        st.write("")
+        if st.button("Drucken / PDF Export", use_container_width=True):
+            st.info("PDF-Export wird vorbereitet...")
+
+    # Grafik-Vorschau (SVG im sauberen Container)
+    st.markdown("### Schnittplan-Vorschau")
     svg_code = '''
     <div style="background-color: transparent; padding: 0px;">
-        <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;">
-            <rect x="20" y="20" width="660" height="310" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
-            <rect x="35" y="35" width="300" height="220" fill="#3b82f6" opacity="0.85" stroke="#1d4ed8"/>
-            <text x="185" y="145" fill="white" font-size="14" font-weight="bold" text-anchor="middle">Seitenwand (2050x1020)</text>
-            <rect x="355" y="35" width="220" height="150" fill="#10b981" opacity="0.85" stroke="#047857"/>
-            <text x="465" y="115" fill="white" font-size="13" font-weight="bold" text-anchor="middle">Bodenplatte</text>
-            <rect x="355" y="195" width="220" height="130" fill="#f59e0b" opacity="0.85" stroke="#d97706"/>
-            <text x="465" y="265" fill="white" font-size="12" text-anchor="middle">Reststück (wiederverwendbar)</text>
+        <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
+            <text x="35" y="25" fill="#555555" font-family="Segoe UI" font-size="12">Pfeil = Schnittrichtung</text>
+            <rect x="35" y="35" width="630" height="260" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
+            <rect x="50" y="50" width="300" height="200" fill="#3498db" opacity="0.9" stroke="#2c3e50"/>
+            <text x="200" y="155" fill="white" font-family="Segoe UI" font-size="14" font-weight="bold" text-anchor="middle">2030 x 1250 x 15 mm</text>
         </svg>
     </div>
     '''
     st.components.v1.html(svg_code, height=370)
 
-    # Bauteil- und Mengenübersicht
-    st.subheader("Bauteil- und Mengenübersicht (Industrie-Standard)")
-    info_data = pd.DataFrame(columns=[
-        "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", 
-        "bisher geschnitten", "auf diesem Plan", "Rest Menge"
+    # Bauteil- und Mengenübersicht (Industrie-Standard)
+    st.markdown("### Bauteil- und Mengenübersicht (Industrie-Standard)")
+    info_data = pd.DataFrame(
+        [["2030x1250", 2030, 1250, 1, 0, 1, 0]],
+        columns=["Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "bisher geschnitten", "auf diesem Plan", "Rest Menge"]
+    ) if st.session_state.bauteile else pd.DataFrame(columns=[
+        "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "bisher geschnitten", "auf diesem Plan", "Rest Menge"
     ])
     st.dataframe(info_data, use_container_width=True, hide_index=True)
