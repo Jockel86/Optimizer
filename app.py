@@ -17,16 +17,20 @@ if "bauteile" not in st.session_state:
 if "optimized_layouts" not in st.session_state:
     st.session_state.optimized_layouts = []
 
-# Initialisierung der Eingabefelder im Session State für die Dropdown-Synchronisation
+# Initialisierung der Eingabefelder im Session State für die Synchronisation
 if "roh_l_input" not in st.session_state:
     st.session_state.roh_l_input = 6180
 if "roh_h_input" not in st.session_state:
     st.session_state.roh_h_input = 2560
+if "sel_roh_st" not in st.session_state:
+    st.session_state.sel_roh_st = 20
 
 if "teil_l_input" not in st.session_state:
     st.session_state.teil_l_input = 2030
 if "teil_h_input" not in st.session_state:
     st.session_state.teil_h_input = 1250
+if "teil_st_input" not in st.session_state:
+    st.session_state.teil_st_input = 20
 
 standard_teile = {
     "2030x1250": (2030, 1250),
@@ -35,7 +39,7 @@ standard_teile = {
     "3050x1020": (3050, 1020)
 }
 
-# Callbacks zur automatischen Anpassung der Maße bei Dropdown-Auswahl
+# Callbacks zur automatischen Anpassung der Maße und Stärken
 def update_roh_dims():
     val = st.session_state.get("sel_roh_preset")
     if val and "x" in val:
@@ -43,6 +47,11 @@ def update_roh_dims():
         st.session_state.roh_l_input = int(l_str)
         st.session_state.roh_h_input = int(h_str)
         st.rerun()
+
+def update_roh_thickness():
+    # Übernimmt die gewählte Rohplatten-Stärke direkt in die Bauteil-Stärke
+    st.session_state.teil_st_input = int(st.session_state.sel_roh_st)
+    st.rerun()
 
 def update_teil_dims():
     val = st.session_state.get("sel_teil_preset")
@@ -109,7 +118,6 @@ with col_left:
     with st.container(border=True):
         roh_formate = ["2090x2090", "3120x2090", "3120x2560", "4140x2090", "5200x2090", "6180x2090", "6180x2560"]
         
-        # Perfekt optimierte Spaltenbreiten, damit auch Stärke und Dropdowns voll sichtbar sind
         rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2.5, 1.6, 1.6, 1.8, 1.1, 0.8])
         with rc1:
             sel_roh_preset = st.selectbox("Pos", roh_formate, index=6, label_visibility="collapsed", key="sel_roh_preset", on_change=update_roh_dims)
@@ -119,14 +127,14 @@ with col_left:
         with rc3:
             roh_h = st.number_input("H", format="%d", key="roh_h_input", label_visibility="collapsed")
         with rc4:
-            roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed", key="sel_roh_st")
+            roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3, label_visibility="collapsed", key="sel_roh_st", on_change=update_roh_thickness)
         with rc5:
             roh_anz = st.number_input("Anz", value=1, min_value=1, format="%d", key="roh_anz_input", label_visibility="collapsed")
         with rc6:
             if st.button("➕", key="add_roh", use_container_width=True):
                 bez = f"Pressplatte_{int(st.session_state.roh_l_input)}x{int(st.session_state.roh_h_input)}"
                 st.session_state.rohplatten.append({
-                    "Bezeichnung": bez, "Länge (mm)": st.session_state.roh_l_input, "Höhe (mm)": st.session_state.roh_h_input, "Stärke": roh_staerke, "Stk.": roh_anz
+                    "Bezeichnung": bez, "Länge (mm)": st.session_state.roh_l_input, "Höhe (mm)": st.session_state.roh_h_input, "Stärke": st.session_state.sel_roh_st, "Stk.": roh_anz
                 })
                 st.rerun()
 
@@ -152,14 +160,14 @@ with col_left:
         with tc3:
             teil_h = st.number_input("H", format="%d", key="teil_h_input", label_visibility="collapsed")
         with tc4:
-            teil_st = st.number_input("St", value=15, format="%d", key="teil_st_input", label_visibility="collapsed")
+            teil_st = st.number_input("St", format="%d", key="teil_st_input", label_visibility="collapsed")
         with tc5:
             teil_anz = st.number_input("Anz", value=3, min_value=1, format="%d", key="teil_anz_input", label_visibility="collapsed")
         with tc6:
             if st.button("➕", key="add_teil", use_container_width=True):
                 name = f"{int(st.session_state.teil_l_input)}x{int(st.session_state.teil_h_input)}"
                 st.session_state.bauteile.append({
-                    "Position": name, "Länge (mm)": st.session_state.teil_l_input, "Höhe (mm)": st.session_state.teil_h_input, "Stärke (mm)": teil_st, "Anz.": teil_anz
+                    "Position": name, "Länge (mm)": st.session_state.teil_l_input, "Höhe (mm)": st.session_state.teil_h_input, "Stärke (mm)": st.session_state.teil_st_input, "Anz.": teil_anz
                 })
                 st.rerun()
 
