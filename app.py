@@ -72,47 +72,48 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion im DIN A4 Querformat (Landscape)
+# PDF-Generierungsfunktion im DIN A4 Querformat (alles kompakt auf einer Seite pro Platte)
 def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_rest, besaeum_info):
-    # FPDF im Querformat initialisieren (Orientation='L', Format='A4')
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     
     for idx, layout in enumerate(layouts):
         pdf.add_page()
-        pdf.set_font('helvetica', 'B', 16)
+        pdf.set_font('helvetica', 'B', 14)
         
-        pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
+        # Titel
+        pdf.cell(0, 8, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
         pdf.ln(1)
         
+        # Kopfdaten
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.cell(0, 4, 'Auftrags- & Kopfdaten:', 0, 1)
+        pdf.set_font('helvetica', '', 8.5)
+        pdf.cell(0, 3.5, f'Auftrag: {auftrag or "-"} | Material: {material or "-"} | Sonstiges: {sonstiges or "-"}', 0, 1)
+        pdf.ln(1)
+        
+        # Plan-Details
         pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(0, 5, 'Auftrags- & Kopfdaten:', 0, 1)
+        pdf.cell(0, 5, f'Plan-Details: {layout["title"]} (Auslastung: {layout["utilization"]}%)', 0, 1)
         pdf.set_font('helvetica', '', 9)
-        pdf.cell(0, 4, f'Auftrag: {auftrag or "-"} | Material: {material or "-"} | Sonstiges: {sonstiges or "-"}', 0, 1)
-        pdf.ln(2)
-        
-        pdf.set_font('helvetica', 'B', 11)
-        pdf.cell(0, 6, f'Plan-Details: {layout["title"]} (Auslastung: {layout["utilization"]}%)', 0, 1)
-        pdf.set_font('helvetica', '', 10)
-        pdf.cell(0, 5, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
+        pdf.cell(0, 4, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
         if besaeum_info["aktiv"]:
-            pdf.cell(0, 5, f'Besäumung (V/H/K1/K2): {besaeum_info["l_vorn"]}/{besaeum_info["l_hinten"]}/{besaeum_info["k_vorn"]}/{besaeum_info["k_hinten"]} mm', 0, 1)
+            pdf.cell(0, 4, f'Besäumung (V/H/K1/K2): {besaeum_info["l_vorn"]}/{besaeum_info["l_hinten"]}/{besaeum_info["k_vorn"]}/{besaeum_info["k_hinten"]} mm', 0, 1)
         pdf.ln(2)
         
-        # Grafische Vorschau im PDF im Querformat zeichnen
-        pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(0, 6, 'Schnittplan-Vorschau:', 0, 1)
+        # Vorschau-Titel
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.cell(0, 5, 'Schnittplan-Vorschau:', 0, 1)
         
         pw = layout["plate_w"]
         ph = layout["plate_h"]
         
-        # Maximale Box im Querformat (A4 Breite = 297 mm, nutzbar ca. 277 mm)
         max_box_w = 265.0
-        max_box_h = 85.0
+        max_box_h = 70.0  # Höhe begrenzt, damit die Tabelle sicher auf dieselbe Seite passt
         scale = min(max_box_w / pw, max_box_h / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
         draw_h = ph * scale
-        start_x = (297 - draw_w) / 2  # Zentriert auf DIN A4 Querformat
+        start_x = (297 - draw_w) / 2
         start_y = pdf.get_y()
         
         pdf.set_fill_color(248, 249, 250)
@@ -147,7 +148,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
                         pdf.set_draw_color(148, 163, 184)
                         pdf.rect(ox, oy, ow, oh, 'DF')
                         if ow > 15 and oh > 8:
-                            pdf.set_font('helvetica', '', 7)
+                            pdf.set_font('helvetica', '', 6)
                             pdf.set_text_color(100, 116, 139)
                             pdf.set_xy(ox, oy + (oh / 2) - 3)
                             pdf.cell(ow, 6, f'{int(o["w"])}x{int(o["h"])}', 0, 0, 'C')
@@ -178,7 +179,6 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
             pdf.set_draw_color(44, 62, 80)
             pdf.rect(rx, ry, rw, rh, 'DF')
             
-            # Robuste Textplatzierung für Werkstücke
             txt = f'{int(p["w"])}x{int(p["h"])}'
             if rw > 6 and rh > 4:
                 pdf_font_size = 8
@@ -191,28 +191,28 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
                 
                 pdf.set_font('helvetica', 'B', pdf_font_size)
                 pdf.set_text_color(255, 255, 255)
-                
                 string_w = pdf.get_string_width(txt)
                 text_x = rx + max(1, (rw - string_w) / 2)
                 text_y = ry + (rh / 2) + (pdf_font_size * 0.35)
                 pdf.text(text_x, text_y, txt)
                 pdf.set_text_color(0, 0, 0)
 
-        # Bauteil- und Mengenübersicht unter der Vorschau im PDF (angepasst an Querformat-Breite 277 mm)
-        pdf.ln(draw_h + 5)
-        pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(0, 6, 'Bauteil- und Mengenübersicht (für diesen Plan):', 0, 1)
+        # Exakte Positionierung direkt unterhalb der Vorschau-Grafik für die Tabelle auf derselben Seite
+        pdf.set_y(start_y + draw_h + 4)
         
         pdf.set_font('helvetica', 'B', 9)
-        pdf.set_fill_color(220, 220, 220)
-        pdf.cell(85, 6, 'Position', 1, 0, 'C', True)
-        pdf.cell(35, 6, 'Länge [mm]', 1, 0, 'C', True)
-        pdf.cell(35, 6, 'Breite [mm]', 1, 0, 'C', True)
-        pdf.cell(35, 6, 'gesamt Menge', 1, 0, 'C', True)
-        pdf.cell(45, 6, 'auf diesem Plan', 1, 0, 'C', True)
-        pdf.cell(42, 6, 'Rest Menge', 1, 1, 'C', True)
+        pdf.cell(0, 5, 'Bauteil- und Mengenübersicht (für diesen Plan):', 0, 1)
         
-        pdf.set_font('helvetica', '', 9)
+        pdf.set_font('helvetica', 'B', 8.5)
+        pdf.set_fill_color(220, 220, 220)
+        pdf.cell(85, 5, 'Position', 1, 0, 'C', True)
+        pdf.cell(35, 5, 'Länge [mm]', 1, 0, 'C', True)
+        pdf.cell(35, 5, 'Breite [mm]', 1, 0, 'C', True)
+        pdf.cell(35, 5, 'gesamt Menge', 1, 0, 'C', True)
+        pdf.cell(45, 5, 'auf diesem Plan', 1, 0, 'C', True)
+        pdf.cell(42, 5, 'Rest Menge', 1, 1, 'C', True)
+        
+        pdf.set_font('helvetica', '', 8.5)
         layout_counts = Counter(p["name"] for p in layout["placed"])
         for item in bauteile:
             pos_name = item["Position"]
@@ -220,12 +220,12 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
             auf_plan = layout_counts.get(pos_name, 0)
             rest = max(0, gesamt - auf_plan)
             
-            pdf.cell(85, 5.5, str(pos_name), 1)
-            pdf.cell(35, 5.5, str(int(item["Länge (mm)"])), 1, 0, 'C')
-            pdf.cell(35, 5.5, str(int(item["Höhe (mm)"])), 1, 0, 'C')
-            pdf.cell(35, 5.5, str(gesamt), 1, 0, 'C')
-            pdf.cell(45, 5.5, str(auf_plan), 1, 0, 'C')
-            pdf.cell(42, 5.5, str(rest), 1, 1, 'C')
+            pdf.cell(85, 4.5, str(pos_name), 1)
+            pdf.cell(35, 4.5, str(int(item["Länge (mm)"])), 1, 0, 'C')
+            pdf.cell(35, 4.5, str(int(item["Höhe (mm)"])), 1, 0, 'C')
+            pdf.cell(35, 4.5, str(gesamt), 1, 0, 'C')
+            pdf.cell(45, 4.5, str(auf_plan), 1, 0, 'C')
+            pdf.cell(42, 4.5, str(rest), 1, 1, 'C')
                 
     return bytes(pdf.output())
 
@@ -618,7 +618,7 @@ with col_right:
                 key="btn_download_pdf"
             )
         else:
-            st.button("Drucken / PDF Export", disabled=True, use_container_width=True, key="btn_pdf_disabled")
+            st.button("Drukken / PDF Export", disabled=True, use_container_width=True, key="btn_pdf_disabled")
 
     st.markdown("### Schnittplan-Vorschau")
     
