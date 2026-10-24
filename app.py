@@ -510,7 +510,7 @@ with col_left:
                     for _ in range(int(t["Anz."])):
                         items_rotated.append({"w": rw, "h": rh, "name": t["Position"]})
 
-                # Je nach Strategie berechnen
+                # Je nach gewählter Strategie berechnen
                 if strategie == "Längsschnitte bevorzugen":
                     norm_layouts = pack_all_items(items_normal, "Schnittplan (Längsschnitte)", "Laengsschnitte")
                     if norm_layouts:
@@ -537,8 +537,8 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # 3 Spalten: Dropdown (großzügig), Reststücke (Checkbox), PDF-Download
-    header_c1, header_c2, header_c3 = st.columns([6.5, 1.5, 2.5])
+    # 3 Spalten Layout: Dropdown (voll lesbar), Reststücke-Checkbox und PDF-Download
+    header_c1, header_c2, header_c3 = st.columns([6.0, 2.0, 2.0])
     selected_index = 0
     with header_c1:
         if st.session_state.optimized_layouts:
