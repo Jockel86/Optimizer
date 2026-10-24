@@ -95,7 +95,7 @@ with col_left:
         with col_r3:
             roh_staerke = st.selectbox("Stärke", [5, 10, 15, 20, 25, 30, 40, 50], index=3)
         with col_r4:
-            roh_anz = st.number_input("Anz", value=1, min_value=1)
+            roh_anz = st.number_input("Anz", value=1, min_value=1, key="roh_anz_input")
         with col_r5:
             st.write("") 
             if st.button("➕", key="add_roh", use_container_width=True):
@@ -168,10 +168,11 @@ with col_left:
                 st.success("Zuschnitt & Reststücke erfolgreich berechnet!")
 
 with col_right:
-    # Grafik-Vorschau
+    # Grafik-Vorschau (Sauber gerendert über st.components.v1.html für Streamlit Dark Mode)
     st.subheader("Schnittplan-Vorschau")
     svg_code = '''
-        <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #f8f9fa; border: 1px solid #cbd5e1; border-radius: 8px;">
+    <div style="background-color: transparent; padding: 0px;">
+        <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;">
             <rect x="20" y="20" width="660" height="310" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
             <rect x="35" y="35" width="300" height="220" fill="#3b82f6" opacity="0.85" stroke="#1d4ed8"/>
             <text x="185" y="145" fill="white" font-size="14" font-weight="bold" text-anchor="middle">Seitenwand (2050x1020)</text>
@@ -180,8 +181,9 @@ with col_right:
             <rect x="355" y="195" width="220" height="130" fill="#f59e0b" opacity="0.85" stroke="#d97706"/>
             <text x="465" y="265" fill="white" font-size="12" text-anchor="middle">Reststück (wiederverwendbar)</text>
         </svg>
+    </div>
     '''
-    st.markdown(svg_code, unsafe_allow_html=True)
+    st.components.v1.html(svg_code, height=370)
 
     # Bauteil- und Mengenübersicht
     st.subheader("Bauteil- und Mengenübersicht (Industrie-Standard)")
