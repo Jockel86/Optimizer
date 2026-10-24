@@ -72,7 +72,7 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion
+# PDF-Generierungsfunktion mit integrierter grafischer Vorschau
 def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
     pdf = FPDF()
     pdf.add_page()
@@ -80,37 +80,99 @@ def generate_pdf_report(auftrag, material, sonstiges, layout, bauteile):
     
     # Titel
     pdf.cell(0, 10, 'Zuschnittplan - Industrie-Edition', 0, 1, 'C')
-    pdf.ln(5)
+    pdf.ln(3)
     
     # Kopfdaten / Metadaten
-    pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 7, 'Auftrags- & Kopfdaten:', 0, 1)
+    pdf.set_font('helvetica', 'B', 11)
+    pdf.cell(0, 6, 'Auftrags- & Kopfdaten:', 0, 1)
     pdf.set_font('helvetica', '', 10)
-    pdf.cell(0, 6, f'Auftrag: {auftrag or "-"}', 0, 1)
-    pdf.cell(0, 6, f'Material: {material or "-"}', 0, 1)
-    pdf.cell(0, 6, f'Sonstiges: {sonstiges or "-"}', 0, 1)
-    pdf.ln(5)
+    pdf.cell(0, 5, f'Auftrag: {auftrag or "-"}', 0, 1)
+    pdf.cell(0, 5, f'Material: {material or "-"}', 0, 1)
+    pdf.cell(0, 5, f'Sonstiges: {sonstiges or "-"}', 0, 1)
+    pdf.ln(4)
     
     if layout:
-        pdf.set_font('helvetica', 'B', 12)
-        pdf.cell(0, 7, f'Gewählter Plan: {layout["title"]}', 0, 1)
-        pdf.cell(0, 6, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
-        pdf.ln(5)
+        pdf.set_font('helvetica', 'B', 11)
+        pdf.cell(0, 6, f'Gewählter Plan: {layout["title"]}', 0, 1)
+        pdf.set_font('helvetica', '', 10)
+        pdf.cell(0, 5, f'Pressplatten-Format: {int(layout["plate_w"])} x {int(layout["plate_h"])} mm', 0, 1)
+        pdf.ln(3)
+        
+        # Grafische Vorschau im PDF zeichnen
+        pdf.set_font('helvetica', 'B', 10)
+        pdf.cell(0, 6, 'Schnittplan-Vorschau:', 0, 1)
+        
+        pw = layout["plate_w"]
+        ph = layout["plate_h"]
+        
+        # Verfügbarer Platz im PDF für die Zeichnung (Breite: 170 mm, Höhe: 75 mm)
+        max_box_w = 170.0
+        max_box_h = 75.0
+        scale = min(max_box_w / pw, max_box_h / ph) if pw > 0 and ph > 0 else 1
+        
+        draw_w = pw * scale
+        draw_h = ph * scale
+        start_x = (210 - draw_w) / 2  # A4 Breite ist 210 mm, zentrieren
+        start_y = pdf.get_y()
+        
+        # Außenrahmen der Pressplatte (Hintergrund hellgrau, Rahmen dunkel)
+        pdf.set_fill_color(248, 249, 250)
+        pdf.set_draw_color(127, 140, 141)
+        pdf.rect(start_x, start_y, draw_w, draw_h, 'DF')
+        
+        # Bauteile einzeichnen
+        # Feste Farbpalette für Bauteile im PDF (RGB)
+        colors_rgb = [
+            (52, 152, 219),   # Blau
+            (46, 204, 113),   # Grün
+            (155, 89, 182),   # Lila
+            (243, 156, 18),   # Orange
+            (26, 188, 156),   # Türkis
+            (211, 84, 0)      # Dunkelorange
+        ]
+        name_to_color_idx = {}
+        
+        for p in layout["placed"]:
+            rname = p["name"]
+            if rname not in name_to_color_idx:
+                name_to_color_idx[rname] = len(name_to_color_idx) % len(colors_rgb)
+            col = colors_rgb[name_to_color_idx[rname]]
+            
+            rx = start_x + p["x"] * scale
+            ry = start_y + p["y"] * scale
+            rw = p["w"] * scale
+            rh = p["h"] * scale
+            
+            pdf.set_fill_color(col[0], col[1], col[2])
+            pdf.set_draw_color(44, 62, 80)
+            pdf.rect(rx, ry, rw, rh, 'DF')
+            
+            # Textbeschriftung im Bauteil (nur wenn Platz genug ist)
+            if rw > 15 and rh > 8:
+                pdf.set_font('helvetica', 'B', 8)
+                pdf.set_text_color(255, 255, 255)
+                # Text in der Mitte des Rechtecks platzieren
+                pdf.set_xy(rx, ry + (rh / 2) - 3)
+                pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
+                pdf.set_text_color(0, 0, 0) # Textfarbe zurücksetzen
+                
+        pdf.set_xy(start_x, start_y + draw_h + 6)
+        pdf.ln(4)
         
     # Bauteil- und Mengenübersicht Tabelle
-    pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 7, 'Bauteil- und Mengenübersicht:', 0, 1)
+    pdf.set_font('helvetica', 'B', 11)
+    pdf.cell(0, 6, 'Bauteil- und Mengenübersicht:', 0, 1)
     
     pdf.set_font('helvetica', 'B', 10)
     pdf.set_fill_color(220, 220, 220)
-    pdf.cell(60, 7, 'Position', 1, 0, 'C', True)
+    pdf.cell(70, 7, 'Position', 1, 0, 'C', True)
     pdf.cell(35, 7, 'Länge [mm]', 1, 0, 'C', True)
     pdf.cell(35, 7, 'Breite [mm]', 1, 0, 'C', True)
     pdf.cell(30, 7, 'Menge', 1, 1, 'C', True)
     
     pdf.set_font('helvetica', '', 10)
     for item in bauteile:
-        pdf.cell(60, 6, str(item["Position"]), 1)
+        pdf.cell(70, 6, str(item["Position"]), 1)
         pdf.cell(35, 6, str(int(item["Länge (mm)"])), 1, 0, 'C')
         pdf.cell(35, 6, str(int(item["Höhe (mm)"])), 1, 0, 'C')
         pdf.cell(30, 6, str(item["Anz."]), 1, 1, 'C')
