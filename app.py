@@ -113,12 +113,14 @@ with col_left:
     st.markdown("### 2. Gewünschte Bauteile / Zuschnitte")
     with st.container(border=True):
         standard_teile = {
-            "2050x1020": (2050, 1020), "2030x1250": (2030, 1250), 
-            "3050x1020": (3050, 1020), "3050x1250": (3050, 1250)
+            "2030x1250": (2030, 1250),
+            "3050x1250": (3050, 1250),
+            "2050x1020": (2050, 1020), 
+            "3050x1020": (3050, 1020)
         }
         tc1, tc2, tc3, tc4, tc5, tc6 = st.columns([2, 1.5, 1.5, 1.2, 1, 1.5])
         with tc1:
-            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=1, label_visibility="collapsed", key="sel_teil_preset")
+            sel_teil = st.selectbox("Pos", list(standard_teile.keys()), index=0, label_visibility="collapsed", key="sel_teil_preset")
         def_tl, def_th = standard_teile[sel_teil]
 
         with tc2:
@@ -161,7 +163,6 @@ with col_left:
                 st.rerun()
         with act2:
             if st.button("Optimieren", type="primary", use_container_width=True):
-                # Standardplatte falls keine Rohplatte in der Tabelle ist
                 if not st.session_state.rohplatten:
                     default_plate_w, default_plate_h = 6180, 2560
                 else:
@@ -172,27 +173,37 @@ with col_left:
                 
                 # Alle Teile anhand der Stückzahl expandieren
                 all_items = []
-                for idx, t in enumerate(st.session_state.bauteile):
-                    for i in range(t["Anz."]):
+                for t in st.session_state.bauteile:
+                    for _ in range(int(t["Anz."])):
                         all_items.append({
                             "w": t["Länge (mm)"],
                             "h": t["Höhe (mm)"],
                             "name": t["Position"]
                         })
                 
-                # Einfache Pack-Logik für die Vorschau
+                # Intelligente Sortierung nach Höhe (absteigend) für Streifen-/Reihenbildung
+                all_items.sort(key=lambda x: x["h"], reverse=True)
+                
+                # Streifen- / Reihen-Packalgorithmus (Guillotine-konform)
                 placed = []
-                cur_x = 40.0
-                cur_y = 40.0
+                margin = 40.0
+                cur_x = margin
+                cur_y = margin
                 row_h = 0.0
+                
+                max_width = default_plate_w - margin
                 
                 for item in all_items:
                     w = item["w"]
                     h = item["h"]
-                    if cur_x + w > default_plate_w - 40:
-                        cur_x = 40.0
+                    
+                    # Prüfen, ob das Teil noch in die aktuelle Reihe passt (inklusive Schnittfuge)
+                    if cur_x + w > max_width:
+                        # Neue Reihe beginnen
+                        cur_x = margin
                         cur_y += row_h + saege
                         row_h = 0.0
+                    
                     placed.append({
                         "x": cur_x,
                         "y": cur_y,
@@ -200,6 +211,7 @@ with col_left:
                         "h": h,
                         "name": item["name"]
                     })
+                    
                     row_h = max(row_h, h)
                     cur_x += w + saege
                 
@@ -225,7 +237,7 @@ with col_right:
         if st.button("Drucken / PDF Export", use_container_width=True, key="btn_pdf"):
             st.info("PDF-Export wird vorbereitet...")
 
-    # Dynamische SVG-Vorschau basierend auf den echten Daten
+    # Dynamische SVG-Vorschau mit echter Reihen-Optimierung
     st.markdown("### Schnittplan-Vorschau")
     
     if st.session_state.optimized_layouts:
@@ -235,7 +247,7 @@ with col_right:
         
         svg_w = 700
         svg_h = 350
-        scale = min((svg_w - 60) / pw, (svg_h - 60) / ph) if pw > 0 and ph > 0 else 1
+        scale = min((svg_w - 80) / pw, (svg_h - 80) / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
         draw_h = ph * scale
@@ -260,7 +272,7 @@ with col_right:
         svg_code = f'''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 {svg_w} {svg_h}" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="35" y="22" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Skaliert)</text>
+                <text x="40" y="25" fill="#555555" font-family="Segoe UI" font-size="11">Platte: {int(pw)} x {int(ph)} mm (Reihen-Optimierung)</text>
                 <rect x="{start_x}" y="{start_y}" width="{draw_w}" height="{draw_h}" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
                 {rects_svg}
             </svg>
@@ -270,8 +282,8 @@ with col_right:
         svg_code = '''
         <div style="background-color: transparent; padding: 0px;">
             <svg viewBox="0 0 700 350" style="width: 100%; height: auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">
-                <text x="35" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
-                <rect x="35" y="45" width="630" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
+                <text x="40" y="30" fill="#555555" font-family="Segoe UI" font-size="12">Bitte links auf "Optimieren" klicken, um den Zuschnitt zu berechnen.</text>
+                <rect x="40" y="45" width="620" height="250" fill="#f8f9fa" stroke="#7f8c8d" stroke-width="2"/>
             </svg>
         </div>
         '''
