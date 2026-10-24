@@ -375,7 +375,6 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Verbessertes Greedy Shelf Packing (nutzt restliche Zeilenbreite voll aus)
                 def try_pack(items_to_pack):
                     items = sorted(items_to_pack, key=lambda x: (x["h"], x["w"]), reverse=True)
                     placed_items = []
@@ -392,45 +391,43 @@ with col_left:
                         row_h = row_item["h"]
                         
                         if cur_y + row_h > max_plate_h:
-                            break
+                            return None, None
                             
                         cur_x = m_l
-                        row_placed = [row_item]
+                        row_items = []
+                        
+                        # Erstes Bauteil der Zeile hinzufügen
+                        row_items.append({
+                            "x": cur_x,
+                            "y": cur_y,
+                            "w": row_item["w"],
+                            "h": row_h,
+                            "name": row_item["name"]
+                        })
                         cur_x += row_item["w"]
                         
-                        # Gierig weitere passende Bauteile in dieselbe Zeile packen
+                        # Weitere passende Bauteile gierig in dieselbe Zeile packen
                         i = 0
                         while i < len(remaining_items):
                             item = remaining_items[i]
                             needed_w = item["w"] + saege
                             if item["h"] <= row_h and cur_x + needed_w <= max_plate_w:
                                 cur_x += saege
-                                item_x = cur_x
-                                item_y = cur_y
-                                row_placed.append({**item, "x": item_x, "y": item_y})
+                                row_items.append({
+                                    "x": cur_x,
+                                    "y": cur_y,
+                                    "w": item["w"],
+                                    "h": item["h"],
+                                    "name": item["name"]
+                                })
                                 cur_x += item["w"]
                                 remaining_items.pop(i)
                             else:
                                 i += 1
+                                
+                        placed_items.extend(row_items)
                         
-                        # Koordinaten für die platzierten Teile der Zeile zuweisen
-                        for idx, it in enumerate(row_placed):
-                            if idx == 0:
-                                rx = m_l
-                            else:
-                                rx = row_placed[idx-1]["x"] + row_placed[idx-1]["w"] + saege
-                            ry = cur_y
-                            placed_items.append({
-                                "x": rx,
-                                "y": ry,
-                                "w": it["w"],
-                                "h": it["h"],
-                                "name": it["name"]
-                            })
-                            
-                        row_end_x = placed_items[-1]["x"] + placed_items[-1]["w"]
-                        
-                        # Rechtes Reststück prüfen
+                        row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
                         right_offcut_w = max_plate_w - row_end_x
                         if right_offcut_w > 20:
                             to_scrap = (right_offcut_w < 600 and row_h < 2000) or (row_h < 600 and right_offcut_w < 2000)
@@ -444,7 +441,6 @@ with col_left:
                             
                         cur_y += row_h + saege
                         
-                    # Unteres Reststück prüfen
                     if placed_items:
                         max_used_y = max(p["y"] + p["h"] for p in placed_items)
                         bottom_offcut_h = max_plate_h - max_used_y
