@@ -371,7 +371,7 @@ with col_left:
                 max_w_row = default_plate_w - m_r
                 max_h_plate = default_plate_h - m_b
 
-                # Robuster Multi-Platten-Packer mit Mindestmaßprüfung für Reste (min 500 breit & min 2000 lang)
+                # Multi-Platten-Packer mit exakter Mindestmaßprüfung (Mind. 500 breit & Mind. 2000 lang)
                 def pack_all_items(items_to_pack, title_prefix):
                     current_items = list(items_to_pack)
                     plate_idx = 1
@@ -432,8 +432,9 @@ with col_left:
                             row_end_x = row_items[-1]["x"] + row_items[-1]["w"]
                             right_offcut_w = max_plate_w - row_end_x
                             if right_offcut_w > 20:
-                                # Mindestmaße: Mindestens 500 breit UND 2000 lang. Alles darunter -> Schrott (to_scrap = True)
-                                to_scrap = (right_offcut_w < 500 and row_h < 2000) or (row_h < 500 and right_offcut_w < 2000)
+                                # Reststück gültig, wenn min. 500 breit UND min. 2000 lang (in beliebiger Ausrichtung)
+                                is_valid_rest = (right_offcut_w >= 500 and row_h >= 2000) or (row_h >= 500 and right_offcut_w >= 2000)
+                                to_scrap = not is_valid_rest
                                 offcuts.append({
                                     "x": row_end_x,
                                     "y": cur_y,
@@ -451,7 +452,8 @@ with col_left:
                             bottom_offcut_h = max_plate_h - max_used_y
                             if bottom_offcut_h > 20:
                                 offcut_w = max_plate_w - m_l
-                                to_scrap = (offcut_w < 500 and bottom_offcut_h < 2000) or (bottom_offcut_h < 500 and offcut_w < 2000)
+                                is_valid_rest = (offcut_w >= 500 and bottom_offcut_h >= 2000) or (bottom_offcut_h >= 500 and offcut_w >= 2000)
+                                to_scrap = not is_valid_rest
                                 offcuts.append({
                                     "x": m_l,
                                     "y": max_used_y,
@@ -601,7 +603,7 @@ with col_right:
                 oh = o["h"] * scale
                 
                 if o["to_scrap"]:
-                    # Schraffiert ohne Text für Schrott-Reste unter Mindestmaß
+                    # Nur schraffiert ohne Text für Schrott-Reste unter Mindestmaß
                     rects_svg += f'''
                         <rect x="{ox}" y="{oy}" width="{ow}" height="{oh}" fill="url(#scrap_hatch)" opacity="0.9" stroke="#64748b" stroke-width="1.5"/>
                     '''
