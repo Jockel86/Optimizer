@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
-from collections import defaultdict
+from collections import defaultdict, Counter
 from fpdf import FPDF
 import io
 
@@ -72,7 +72,7 @@ def update_teil_dims():
         st.session_state.teil_h_input = int(h)
         st.rerun()
 
-# PDF-Generierungsfunktion für alle Schnittpläne eines Auftrags
+# PDF-Generierungsfunktion für alle Schnittpläne eines Auftrags (inkl. plattenbezogener Bauteilliste)
 def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_rest, besaeum_info):
     pdf = FPDF()
     
@@ -97,6 +97,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
             pdf.cell(0, 5, f'Besäumung (V/H/K1/K2): {besaeum_info["l_vorn"]}/{besaeum_info["l_hinten"]}/{besaeum_info["k_vorn"]}/{besaeum_info["k_hinten"]} mm', 0, 1)
         pdf.ln(3)
         
+        # Grafische Vorschau im PDF zeichnen
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 6, 'Schnittplan-Vorschau:', 0, 1)
         
@@ -104,7 +105,7 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
         ph = layout["plate_h"]
         
         max_box_w = 170.0
-        max_box_h = 75.0
+        max_box_h = 70.0
         scale = min(max_box_w / pw, max_box_h / ph) if pw > 0 and ph > 0 else 1
         
         draw_w = pw * scale
@@ -184,26 +185,30 @@ def generate_pdf_report(auftrag, material, sonstiges, layouts, bauteile, show_re
                 pdf.set_xy(rx, ry + (rh / 2) - 3)
                 pdf.cell(rw, 6, f'{int(p["w"])}x{int(p["h"])}', 0, 0, 'C')
                 pdf.set_text_color(0, 0, 0)
-                
-    pdf.add_page()
-    pdf.set_font('helvetica', 'B', 14)
-    pdf.cell(0, 10, 'Bauteil- und Mengenübersicht (Gesamtauftrag)', 0, 1, 'L')
-    pdf.ln(3)
-    
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.set_fill_color(220, 220, 220)
-    pdf.cell(70, 7, 'Position', 1, 0, 'C', True)
-    pdf.cell(35, 7, 'Länge [mm]', 1, 0, 'C', True)
-    pdf.cell(35, 7, 'Breite [mm]', 1, 0, 'C', True)
-    pdf.cell(30, 7, 'Menge', 1, 1, 'C', True)
-    
-    pdf.set_font('helvetica', '', 10)
-    for item in bauteile:
-        pdf.cell(70, 6, str(item["Position"]), 1)
-        pdf.cell(35, 6, str(int(item["Länge (mm)"])), 1, 0, 'C')
-        pdf.cell(35, 6, str(int(item["Höhe (mm)"])), 1, 0, 'C')
-        pdf.cell(30, 6, str(item["Anz."]), 1, 1, 'C')
+
+        # Bauteilliste direkt unter die Vorschau auf dieser PDF-Seite setzen
+        pdf.ln(draw_h + 8)
+        pdf.set_font('helvetica', 'B', 10)
+        pdf.cell(0, 6, 'Bauteile auf diesem Schnittplan:', 0, 1)
         
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.set_fill_color(220, 220, 220)
+        pdf.cell(70, 6, 'Position', 1, 0, 'C', True)
+        pdf.cell(35, 6, 'Länge [mm]', 1, 0, 'C', True)
+        pdf.cell(35, 6, 'Breite [mm]', 1, 0, 'C', True)
+        pdf.cell(30, 6, 'Menge auf Plan', 1, 1, 'C', True)
+        
+        pdf.set_font('helvetica', '', 9)
+        layout_counts = Counter(p["name"] for p in layout["placed"])
+        for item in bauteile:
+            pos_name = item["Position"]
+            qty_on_plan = layout_counts.get(pos_name, 0)
+            if qty_on_plan > 0:
+                pdf.cell(70, 5, str(item["Position"]), 1)
+                pdf.cell(35, 5, str(int(item["Länge (mm)"])), 1, 0, 'C')
+                pdf.cell(35, 5, str(int(item["Höhe (mm)"])), 1, 0, 'C')
+                pdf.cell(30, 5, str(qty_on_plan), 1, 1, 'C')
+                
     return bytes(pdf.output())
 
 col_left, col_right = st.columns([5, 7], gap="medium")
@@ -367,28 +372,23 @@ with col_left:
                 if oversized:
                     st.error("Fehler: Mindestens ein Bauteil ist größer als die verfügbare Pressplatte (inkl. Besäumung/Randabzug)!")
                 else:
-                    # Strenger, fehlerfreier Block- und Raster-Packer (garantiert Null Überlappungen)
                     def pack_guillotine_strict(items, plate_w, plate_h, m_l, m_r, m_t, m_b, saege):
                         max_w = plate_w - m_r
                         max_h = plate_h - m_b
                         
                         placed = []
                         unplaced = list(items)
-                        
-                        # Sortieren nach Fläche absteigend
                         unplaced.sort(key=lambda x: x["w"] * x["h"], reverse=True)
                         
                         if not unplaced:
                             return placed, [], unplaced
                             
-                        # Nimm das größte Bauteil als Referenz
                         primary_item = unplaced[0]
                         pw, ph = primary_item["w"], primary_item["h"]
                         
                         if m_l + pw > max_w or m_t + ph > max_h:
                             return [], [], items
                             
-                        # Platziere das erste große Bauteil oben links
                         placed.append({
                             "x": m_l,
                             "y": m_t,
@@ -398,7 +398,6 @@ with col_left:
                         })
                         unplaced.pop(0)
                         
-                        # Definiere zwei saubere, nicht-überlappende Pockets
                         pocket_right = {
                             "x": m_l + pw + saege,
                             "y": m_t,
@@ -449,22 +448,18 @@ with col_left:
                                     
                             return pocket_placed
 
-                        # Fülle Pocket Rechts
                         right_items = list(unplaced)
                         placed_right = fill_pocket(pocket_right, right_items)
                         placed.extend(placed_right)
                         
-                        # Entferne die platzierten Teile aus unplaced
                         unplaced = unplaced[len(placed_right):]
                         
-                        # Fülle Pocket Unten mit dem verbleibenden Rest
                         bottom_items = list(unplaced)
                         placed_bottom = fill_pocket(pocket_bottom, bottom_items)
                         placed.extend(placed_bottom)
                         
                         final_unplaced = bottom_items[len(placed_bottom):]
                         
-                        # Reststücke (Offcuts) berechnen
                         offcuts = []
                         max_used_x = max((p["x"] + p["w"] for p in placed), default=m_l)
                         max_used_y = max((p["y"] + p["h"] for p in placed), default=m_t)
@@ -714,28 +709,42 @@ with col_right:
 
     st.markdown("### Bauteil- und Mengenübersicht (Industrie-Standard)")
     
-    if st.session_state.bauteile:
+    if st.session_state.bauteile and st.session_state.optimized_layouts:
+        current_layout = st.session_state.optimized_layouts[selected_index]
+        layout_counts = Counter(p["name"] for p in current_layout["placed"])
+        
         info_rows = []
         for item in st.session_state.bauteile:
+            pos_name = item["Position"]
             gesamt = item["Anz."]
-            auf_plan = gesamt if st.session_state.optimized_layouts else 0
+            auf_plan = layout_counts.get(pos_name, 0)
+            rest = max(0, gesamt - auf_plan)
+            info_rows.append([
+                pos_name,
+                int(item["Länge (mm)"]),
+                int(item["Höhe (mm)"]),
+                gesamt,
+                auf_plan,  # auf diesem Plan
+                rest       # Rest Menge
+            ])
+        info_data = pd.DataFrame(info_rows, columns=[
+            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "auf diesem Plan", "Rest Menge"
+        ])
+    else:
+        info_rows = []
+        for item in st.session_state.bauteile:
             info_rows.append([
                 item["Position"],
                 int(item["Länge (mm)"]),
                 int(item["Höhe (mm)"]),
-                gesamt,
-                0,  # bisher geschnitten
-                auf_plan,  # auf diesem Plan
-                0   # Rest Menge
+                item["Anz."],
+                0,
+                item["Anz."]
             ])
         info_data = pd.DataFrame(info_rows, columns=[
-            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", 
-            "bisher geschnitten", "auf diesem Plan", "Rest Menge"
-        ])
-    else:
-        info_data = pd.DataFrame(columns=[
-            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", 
-            "bisher geschnitten", "auf diesem Plan", "Rest Menge"
+            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "auf diesem Plan", "Rest Menge"
+        ]) if st.session_state.bauteile else pd.DataFrame(columns=[
+            "Position", "Länge [mm]", "Breite [mm]", "gesamt Menge", "auf diesem Plan", "Rest Menge"
         ])
 
     st.dataframe(info_data, use_container_width=True, hide_index=True)
